@@ -4,6 +4,7 @@ import '../models/user.dart';
 import 'operate_screen.dart';
 import 'statistics_screen.dart';
 import 'settings_screen.dart';
+import 'product_information_screen.dart';
 
 class MainScreen extends StatefulWidget {
   final SternProduct product;
@@ -69,6 +70,14 @@ class _MainScreenState extends State<MainScreen> {
                   ],
                 ),
               ),
+              GestureDetector(
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) =>
+                        ProductInformationScreen(product: widget.product))),
+                child: const Icon(Icons.info_outline,
+                    color: Colors.white, size: 28),
+              ),
+              const SizedBox(width: 12),
               GestureDetector(
                 onTap: () => showDialog(
                     context: context,
