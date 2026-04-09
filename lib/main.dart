@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'screens/splash_screen.dart';
-import 'screens/password_screen.dart';
-import 'screens/main_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const SternApp());
 }
 
@@ -16,14 +15,10 @@ class SternApp extends StatelessWidget {
       title: 'Stern',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1A73E8)),
+        useMaterial3: true,
       ),
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const SplashScreen(),
-        '/password': (context) => const PasswordScreen(),
-        '/main': (context) => const MainScreen(),
-      },
+      home: const SplashScreen(),
     );
   }
 }

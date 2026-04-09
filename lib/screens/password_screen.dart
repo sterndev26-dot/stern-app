@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../models/user.dart';
+import '../utils/constants.dart';
+import 'scanned_products_screen.dart';
 
 class PasswordScreen extends StatefulWidget {
   const PasswordScreen({super.key});
@@ -9,84 +11,130 @@ class PasswordScreen extends StatefulWidget {
 }
 
 class _PasswordScreenState extends State<PasswordScreen> {
-  final TextEditingController _passwordController = TextEditingController();
-  bool _isError = false;
+  final _passwordController = TextEditingController();
+  bool _isConnectEnabled = false;
 
-  static const String TECHNICIAN_PASSWORD = '4321';
+  static const _appBlue = Color(0xFF1A73E8);
 
-  void _onPasswordSubmit() async {
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  void _onPasswordChanged(String value) {
+    setState(() => _isConnectEnabled = value.isNotEmpty);
+  }
+
+  Future<void> _onConnect() async {
     final password = _passwordController.text;
-
-    if (password == TECHNICIAN_PASSWORD) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('user_type_set', true);
-      await prefs.setString('user_type', 'technician');
-
-      if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/main');
+    if (password == AppConstants.sharedPrefTechnicianPassword) {
+      await User.instance.loginAsTechnician();
+      _goToMain();
     } else {
-      setState(() => _isError = true);
-      _passwordController.clear();
+      _showWrongPasswordDialog();
     }
   }
 
-  void _onGuestConnect() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('user_type_set', true);
-    await prefs.setString('user_type', 'guest');
+  Future<void> _onGuestConnect() async {
+    await User.instance.loginAsCleaner();
+    _goToMain();
+  }
 
+  void _goToMain() {
     if (!mounted) return;
-    Navigator.pushReplacementNamed(context, '/main');
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const ScannedProductsScreen()),
+    );
+  }
+
+  void _showWrongPasswordDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Wrong Password'),
+        content: const Text('The password you entered is incorrect.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset('assets/images/logo.png', height: 120),
-              const SizedBox(height: 40),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                textAlign: TextAlign.center,
-                maxLength: 4,
-                decoration: InputDecoration(
-                  hintText: 'Enter Password',
-                  errorText: _isError ? 'The password is wrong' : null,
-                  border: const OutlineInputBorder(),
-                ),
-                onSubmitted: (_) => _onPasswordSubmit(),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset('assets/images/neutral_app_opening.png', fit: BoxFit.cover),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          onChanged: _onPasswordChanged,
+                          onSubmitted: (_) { if (_isConnectEnabled) _onConnect(); },
+                          decoration: const InputDecoration(
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(borderSide: BorderSide.none),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: _isConnectEnabled ? _onConnect : null,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: _isConnectEnabled ? _appBlue : Colors.grey,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'Connect',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: GestureDetector(
+                      onTap: _onGuestConnect,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _appBlue,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'Guest Connect',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                ],
               ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _onPasswordSubmit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  minimumSize: const Size(double.infinity, 50),
-                ),
-                child: const Text(
-                  'Connect',
-                  style: TextStyle(color: Colors.white, fontSize: 18),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: _onGuestConnect,
-                child: const Text(
-                  'Connect as Guest',
-                  style: TextStyle(color: Colors.blue, fontSize: 16),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

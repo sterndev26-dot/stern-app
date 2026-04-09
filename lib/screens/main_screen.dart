@@ -1,54 +1,105 @@
 import 'package:flutter/material.dart';
+import '../models/stern_product.dart';
+import '../models/user.dart';
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  final SternProduct product;
+
+  const MainScreen({super.key, required this.product});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
+  static const _appBlue = Color(0xFF1A73E8);
   int _currentIndex = 0;
 
-  final List<Widget> _screens = [
-    const Center(child: Text('Operate')),
+  bool get _isTechnician => User.instance.isTechnician;
+
+  List<Widget> get _screens => [
+    Center(child: Text('Operate\n${widget.product.name}', textAlign: TextAlign.center)),
     const Center(child: Text('Statistics')),
-    const Center(child: Text('Settings')),
+    if (_isTechnician) const Center(child: Text('Settings')),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.blue,
-        title: const Text('Stern', style: TextStyle(color: Colors.white)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.bluetooth, color: Colors.white),
-            onPressed: () {},
-          ),
+      body: Column(
+        children: [
+          _buildHeader(),
+          Expanded(child: _screens[_currentIndex]),
         ],
       ),
-      body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        selectedItemColor: Colors.blue,
-        onTap: (index) => setState(() => _currentIndex = index),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.play_circle_outline),
-            label: 'Operate',
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      color: _appBlue,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Image.asset('assets/images/arrow.png', width: 28, height: 28),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.product.name,
+                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                    const Text('Settings', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                onTap: () => showDialog(context: context, builder: (_) => const _HelpDialog()),
+                child: Image.asset('assets/images/help.png', width: 28, height: 28),
+              ),
+            ],
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            label: 'Statistics',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildBottomNav() {
+    final items = <BottomNavigationBarItem>[
+      const BottomNavigationBarItem(icon: Icon(Icons.play_circle_outline), label: 'Operate'),
+      const BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Statistics'),
+      if (_isTechnician)
+        const BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+    ];
+
+    return BottomNavigationBar(
+      currentIndex: _currentIndex,
+      selectedItemColor: _appBlue,
+      unselectedItemColor: Colors.grey,
+      onTap: (i) => setState(() => _currentIndex = i),
+      items: items,
+    );
+  }
+}
+
+class _HelpDialog extends StatelessWidget {
+  const _HelpDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Help'),
+      content: const Text('Use the tabs below to Operate, view Statistics, or configure Settings for this device.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+      ],
     );
   }
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../models/user.dart';
+import 'password_screen.dart';
+import 'scanned_products_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -12,20 +14,24 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _navigateNext();
+    _navigate();
   }
 
-  Future<void> _navigateNext() async {
+  Future<void> _navigate() async {
     await Future.delayed(const Duration(milliseconds: 1500));
-    final prefs = await SharedPreferences.getInstance();
-    final userTypeSet = prefs.getBool('user_type_set') ?? false;
-
     if (!mounted) return;
 
-    if (userTypeSet) {
-      Navigator.pushReplacementNamed(context, '/main');
+    final hasSession = await User.instance.loadSavedSession();
+    if (!mounted) return;
+
+    if (hasSession) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const ScannedProductsScreen()),
+      );
     } else {
-      Navigator.pushReplacementNamed(context, '/password');
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const PasswordScreen()),
+      );
     }
   }
 
@@ -37,10 +43,14 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Image.asset('assets/images/logo.png', height: 150),
+            Image.asset(
+              'assets/images/splash_screen_img.png',
+              fit: BoxFit.contain,
+              height: 200,
+            ),
             const SizedBox(height: 40),
-            const CircularProgressIndicator(color: Colors.blue),
-            const SizedBox(height: 40),
+            const CircularProgressIndicator(color: Color(0xFF1A73E8)),
+            const SizedBox(height: 20),
             const Text(
               'Version: 1.0.67',
               style: TextStyle(color: Colors.grey, fontSize: 12),
