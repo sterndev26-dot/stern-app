@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/stern_product.dart';
 import '../models/user.dart';
+import 'operate_screen.dart';
+import 'statistics_screen.dart';
+import 'settings_screen.dart';
 
 class MainScreen extends StatefulWidget {
   final SternProduct product;
@@ -18,10 +21,10 @@ class _MainScreenState extends State<MainScreen> {
   bool get _isTechnician => User.instance.isTechnician;
 
   List<Widget> get _screens => [
-    Center(child: Text('Operate\n${widget.product.name}', textAlign: TextAlign.center)),
-    const Center(child: Text('Statistics')),
-    if (_isTechnician) const Center(child: Text('Settings')),
-  ];
+        OperateScreen(product: widget.product),
+        StatisticsScreen(product: widget.product),
+        if (_isTechnician) SettingsScreen(product: widget.product),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +50,8 @@ class _MainScreenState extends State<MainScreen> {
             children: [
               GestureDetector(
                 onTap: () => Navigator.of(context).pop(),
-                child: Image.asset('assets/images/arrow.png', width: 28, height: 28),
+                child: Image.asset('assets/images/arrow.png',
+                    width: 28, height: 28),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -55,14 +59,22 @@ class _MainScreenState extends State<MainScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(widget.product.name,
-                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                    const Text('Settings', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold)),
+                    const Text('Settings',
+                        style:
+                            TextStyle(color: Colors.white70, fontSize: 14)),
                   ],
                 ),
               ),
               GestureDetector(
-                onTap: () => showDialog(context: context, builder: (_) => const _HelpDialog()),
-                child: Image.asset('assets/images/help.png', width: 28, height: 28),
+                onTap: () => showDialog(
+                    context: context,
+                    builder: (_) => const _HelpDialog()),
+                child: Image.asset('assets/images/help.png',
+                    width: 28, height: 28),
               ),
             ],
           ),
@@ -73,10 +85,13 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget _buildBottomNav() {
     final items = <BottomNavigationBarItem>[
-      const BottomNavigationBarItem(icon: Icon(Icons.play_circle_outline), label: 'Operate'),
-      const BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Statistics'),
+      const BottomNavigationBarItem(
+          icon: Icon(Icons.play_circle_outline), label: 'Operate'),
+      const BottomNavigationBarItem(
+          icon: Icon(Icons.bar_chart), label: 'Statistics'),
       if (_isTechnician)
-        const BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.settings), label: 'Settings'),
     ];
 
     return BottomNavigationBar(
@@ -96,9 +111,12 @@ class _HelpDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Help'),
-      content: const Text('Use the tabs below to Operate, view Statistics, or configure Settings for this device.'),
+      content: const Text(
+          'Use the tabs below to Operate, view Statistics, or configure Settings for this device.'),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK')),
       ],
     );
   }
