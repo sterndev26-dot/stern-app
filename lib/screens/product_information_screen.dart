@@ -61,12 +61,18 @@ class _ProductInformationScreenState extends State<ProductInformationScreen> {
 
     if (infoData != null && mounted) {
       final hexStr = _parser.bytesToHexString(infoData);
+      // Parse device name — update product name if device has one set
+      final deviceName = _parser.getName(hexStr);
       final serial = _parser.parseSerialNumber(hexStr);
-      final sw = _parser.parseSoftwareVersion(infoData);
+      final sw = _parser.parseSoftwareVersion(hexStr);   // 3-part, from hex string
       final mfgDate = _parser.getDate(hexStr);
       final battery = _parser.parseBatteryVoltage(infoData);
 
       setState(() {
+        if (deviceName != null && deviceName.isNotEmpty) {
+          _product.name = deviceName;
+          _nameController.text = deviceName;
+        }
         if (serial != null) _product.serialNumber = serial;
         if (sw != null) _product.swVersion = sw;
         if (mfgDate != null) _product.lastUpdate = _parser.formatDate(mfgDate);
@@ -124,11 +130,13 @@ class _ProductInformationScreenState extends State<ProductInformationScreen> {
     });
     _nameFocus.unfocus();
 
-    // Write name via BLE
+    // Write name via BLE:
+    // Android: stringToASCII(name+"$&") = [0x01, ...ASCII bytes...]
+    // Written to UUID_STERN_DATA_INFORMATION_CHARACTIRISTICS_READ (uuidInformationRead 0x1303)
     await _ble.writeCharacteristic(
       BleGattAttributes.uuidDataInformationService,
-      BleGattAttributes.uuidInformationWrite,
-      name.codeUnits,
+      BleGattAttributes.uuidInformationRead,
+      _parser.nameToBytes(name),
     );
 
     // Persist to local DB

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as dev;
 import 'package:flutter/material.dart';
 import '../models/stern_product.dart';
@@ -25,7 +26,10 @@ class _OperateScreenState extends State<OperateScreen>
 
   double _hygieneValue = 30;
   double _standbyValue = 30;
-  bool _isBusy = false;
+  bool _isActivating = false;
+  bool _isValveOpen = false;
+  bool _isStandbyBusy = false;
+  Timer? _valveAutoCloseTimer;
 
   bool get _isSoapType =>
       widget.product.type == SternTypes.soapDispenser ||
@@ -50,6 +54,7 @@ class _OperateScreenState extends State<OperateScreen>
 
   @override
   void dispose() {
+    _valveAutoCloseTimer?.cancel();
     _tabController.dispose();
     _presetNameController.dispose();
     super.dispose();
@@ -61,7 +66,7 @@ class _OperateScreenState extends State<OperateScreen>
         BleGattAttributes.uuidDataOperateService,
         BleGattAttributes.uuidOperateReadWrite,
       );
-      if (data != null && data.length >= 2) {
+      if (data != null && data.length >= 2 && mounted) {
         setState(() {
           _hygieneValue = (data[0] * _stepSize).clamp(0, 100).toDouble();
           _standbyValue = data[1].clamp(0, 100).toDouble();
@@ -75,37 +80,119 @@ class _OperateScreenState extends State<OperateScreen>
   int _snap(double val) =>
       ((val / _stepSize).round() * _stepSize).clamp(0, 100);
 
+  // ── Valve open ────────────────────────────────────────────────────────────
+  // Android: sends [duration & 0xFF, (duration >> 8) & 0xFF] to
+  // UUID_STERN_DATA_OPEN_CLOSE_VALVE_CHARACTIRISTICS_WRITE
+  // then auto-closes after (duration*1000 + 2300) ms
   Future<void> _activate() async {
-    if (_isBusy) return;
-    setState(() => _isBusy = true);
+    if (_isActivating) return;
+
+    if (_isValveOpen) {
+      // Tap again → close immediately
+      await _closeValve();
+      return;
+    }
+
+    final duration = _snap(_hygieneValue);
+    if (duration == 0) {
+      _showSnack('Duration cannot be zero');
+      return;
+    }
+
+    setState(() => _isActivating = true);
     try {
-      final duration = _snap(_hygieneValue);
       final success = await _ble.writeCharacteristic(
         BleGattAttributes.uuidDataOperateService,
         BleGattAttributes.uuidOpenCloseValveWrite,
-        [duration, 0x01],
+        [duration & 0xFF, (duration >> 8) & 0xFF],
       );
-      if (mounted) {
-        _showSnack(
-            success ? 'Activation sent ($duration s)' : 'Failed to activate');
+
+      if (!mounted) return;
+      if (success) {
+        setState(() {
+          _isValveOpen = true;
+          _isActivating = false;
+        });
+        // Auto-close after duration + 2.3 s (matches Android timer)
+        _valveAutoCloseTimer?.cancel();
+        _valveAutoCloseTimer = Timer(
+          Duration(milliseconds: duration * 1000 + 2300),
+          () {
+            if (mounted) {
+              _closeValve();
+            }
+          },
+        );
+      } else {
+        setState(() => _isActivating = false);
+        _showSnack('Failed to activate');
       }
     } catch (e) {
-      if (mounted) _showSnack('Error: $e');
-    } finally {
-      if (mounted) setState(() => _isBusy = false);
+      if (mounted) {
+        setState(() => _isActivating = false);
+        _showSnack('Error: $e');
+      }
     }
   }
 
-  Future<void> _standby() async {
-    if (_isBusy) return;
-    setState(() => _isBusy = true);
+  // ── Valve close ───────────────────────────────────────────────────────────
+  // Android closeValve(): sends [0x00, 0x00] to same write characteristic
+  Future<void> _closeValve() async {
+    _valveAutoCloseTimer?.cancel();
+    _valveAutoCloseTimer = null;
     try {
-      final duration = _snap(_standbyValue);
-      final success = await _ble.writeCharacteristic(
+      await _ble.writeCharacteristic(
         BleGattAttributes.uuidDataOperateService,
         BleGattAttributes.uuidOpenCloseValveWrite,
-        [duration, 0x02],
+        [0x00, 0x00],
       );
+    } catch (e) {
+      dev.log('closeValve error: $e');
+    } finally {
+      if (mounted) setState(() {_isValveOpen = false; _isActivating = false;});
+    }
+  }
+
+  // ── Standby ───────────────────────────────────────────────────────────────
+  // Android sendStandByImidiatlyDuration → sendScheduled(STANDBY_MODE, immediatelyStandBy=true)
+  // Builds 14-byte packet:
+  //   [0]=writeOrRead=1, [1]=type=3(STANDBY), [2]=duration,
+  //   [3]=firstRepeat=0, [4]=secondRepeat=0,
+  //   [5]=sec, [6]=min, [7]=hour, [8]=day, [9]=month, [10]=year-2000,
+  //   [11-12]=0x00, [13]=handleID=0
+  // Written to UUID_STERN_DATA_INFORMATION_SCHEDUALED_CHARACTERISTIC
+  Future<void> _standby() async {
+    if (_isStandbyBusy) return;
+
+    final duration = _snap(_standbyValue);
+    if (duration == 0) {
+      _showSnack('Standby duration cannot be zero');
+      return;
+    }
+
+    setState(() => _isStandbyBusy = true);
+    try {
+      final now = DateTime.now();
+      final packet = List<int>.filled(14, 0);
+      packet[0] = 0x01;                      // write
+      packet[1] = 0x03;                      // STANDBY_MODE
+      packet[2] = duration & 0xFF;           // duration
+      packet[3] = 0x00;                      // firstByteRepeat
+      packet[4] = 0x00;                      // secondByteRepeat
+      packet[5] = now.second & 0xFF;
+      packet[6] = now.minute & 0xFF;
+      packet[7] = now.hour & 0xFF;
+      packet[8] = now.day & 0xFF;
+      packet[9] = now.month & 0xFF;
+      packet[10] = (now.year - 2000) & 0xFF;
+      // [11],[12],[13] = 0x00
+
+      final success = await _ble.writeCharacteristic(
+        BleGattAttributes.uuidDataInformationService,
+        BleGattAttributes.uuidScheduledCharacteristic,
+        packet,
+      );
+
       if (mounted) {
         _showSnack(success
             ? 'Standby set ($duration min)'
@@ -114,7 +201,7 @@ class _OperateScreenState extends State<OperateScreen>
     } catch (e) {
       if (mounted) _showSnack('Error: $e');
     } finally {
-      if (mounted) setState(() => _isBusy = false);
+      if (mounted) setState(() => _isStandbyBusy = false);
     }
   }
 
@@ -190,6 +277,8 @@ class _OperateScreenState extends State<OperateScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 8),
+
+          // ── Hygiene / Soap ──────────────────────────
           _SectionCard(
             title: hygieneLabel,
             child: Column(
@@ -216,35 +305,45 @@ class _OperateScreenState extends State<OperateScreen>
                   divisions: 20,
                   activeColor: _appBlue,
                   label: '${_snap(_hygieneValue)} s',
-                  onChanged: (v) => setState(() => _hygieneValue = v),
+                  onChanged: _isValveOpen
+                      ? null
+                      : (v) => setState(() => _hygieneValue = v),
                 ),
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _isBusy ? null : _activate,
+                    onPressed: _isActivating ? null : _activate,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _appBlue,
+                      backgroundColor:
+                          _isValveOpen ? Colors.red : _appBlue,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8)),
                     ),
-                    child: _isBusy
+                    child: _isActivating
                         ? const SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
                                 strokeWidth: 2, color: Colors.white))
                         : Text(
-                            _isSoapType ? 'Dispense Now' : 'Activate Now',
+                            _isValveOpen
+                                ? 'Turn Off Now'
+                                : (_isSoapType
+                                    ? 'Dispense Now'
+                                    : 'Activate Now'),
                             style: const TextStyle(fontSize: 16)),
                   ),
                 ),
               ],
             ),
           ),
+
           const SizedBox(height: 16),
+
+          // ── Standby ─────────────────────────────────
           _SectionCard(
             title: 'Standby Duration',
             child: Column(
@@ -277,7 +376,7 @@ class _OperateScreenState extends State<OperateScreen>
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
-                    onPressed: _isBusy ? null : _standby,
+                    onPressed: _isStandbyBusy ? null : _standby,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: _appBlue,
                       side: const BorderSide(color: _appBlue),
@@ -285,8 +384,14 @@ class _OperateScreenState extends State<OperateScreen>
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8)),
                     ),
-                    child:
-                        const Text('Set Standby', style: TextStyle(fontSize: 16)),
+                    child: _isStandbyBusy
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: _appBlue))
+                        : const Text('Set Standby',
+                            style: TextStyle(fontSize: 16)),
                   ),
                 ),
               ],

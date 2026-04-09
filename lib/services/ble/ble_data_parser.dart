@@ -12,14 +12,18 @@ class BleDataParser {
   // DATE PARSING
   // ─────────────────────────────────────
 
+  /// Parses a space-separated hex string into a DateTime.
+  /// isCalendarDate=false (default): bytes [1]=sec,[2]=min,[3]=hr,[4]=day,[5]=month,[6]=year
+  /// isCalendarDate=true:            bytes [0]=sec,[1]=min,[2]=hr,[3]=day,[4]=month,[5]=year
+  /// Returns null if sentinel (255,255,255) detected or parse fails.
   DateTime? getDate(String hexStr, {bool isCalendarDate = false}) {
     try {
       final parts = hexStr.trim().split(' ');
-      if (parts.length < 6) return null;
 
       int seconds, minutes, hours, day, month, year;
 
       if (isCalendarDate) {
+        if (parts.length < 6) return null;
         seconds = int.parse(parts[0], radix: 16);
         minutes = int.parse(parts[1], radix: 16);
         hours   = int.parse(parts[2], radix: 16);
@@ -51,6 +55,8 @@ class BleDataParser {
   // SERIAL NUMBER
   // ─────────────────────────────────────
 
+  /// Parses serial number: bytes 1-4 reversed → hex string → int.
+  /// Returns null for FFFFFFFF (not set).
   String? parseSerialNumber(String hexStr) {
     try {
       final parts = hexStr.trim().split(' ');
@@ -68,10 +74,16 @@ class BleDataParser {
   // SOFTWARE VERSION
   // ─────────────────────────────────────
 
-  String? parseSoftwareVersion(List<int> bytes) {
+  /// Parses SW version as "major.minor.patch" from hex string.
+  /// Android parseSW: hexArr[3].hexArr[2].hexArr[1]
+  String? parseSoftwareVersion(String hexStr) {
     try {
-      if (bytes.length < 2) return null;
-      return '${bytes[0]}.${bytes[1]}';
+      final parts = hexStr.trim().split(' ');
+      if (parts.length < 4) return null;
+      final patch = int.parse(parts[1], radix: 16);
+      final minor = int.parse(parts[2], radix: 16);
+      final major = int.parse(parts[3], radix: 16);
+      return '$major.$minor.$patch';
     } catch (e) {
       dev.log('parseSoftwareVersion error: $e', name: 'BleDataParser');
       return null;
@@ -79,16 +91,48 @@ class BleDataParser {
   }
 
   // ─────────────────────────────────────
+  // PRODUCT NAME
+  // ─────────────────────────────────────
+
+  /// Parses device name from hex string (information characteristic).
+  /// Android getName: starts at index 1, skips 0xFF/0x00, stops at "$&" terminator.
+  String? getName(String hexStr) {
+    try {
+      final parts = hexStr.trim().split(' ');
+      final buffer = StringBuffer();
+      for (int i = 1; i < parts.length - 1; i++) {
+        final byte = int.parse(parts[i], radix: 16);
+        if (byte == 0xFF || byte == 0x00) continue;
+        final ch = String.fromCharCode(byte);
+        // Check "$&" terminator (two consecutive bytes 0x24 0x26)
+        final nextByte = int.parse(parts[i + 1], radix: 16);
+        if (byte == 0x24 && nextByte == 0x26) break;
+        buffer.write(ch);
+      }
+      final name = buffer.toString().trim();
+      return name.isEmpty ? null : name;
+    } catch (e) {
+      dev.log('getName error: $e', name: 'BleDataParser');
+      return null;
+    }
+  }
+
+  /// Encodes name for BLE write: [0x01, ...ASCII bytes of "name$&"]
+  /// Matches Android stringToASCII(name + "$&")
+  List<int> nameToBytes(String name) {
+    final ascii = (name + r'$&').codeUnits;
+    return [0x01, ...ascii];
+  }
+
+  // ─────────────────────────────────────
   // HELPERS
   // ─────────────────────────────────────
 
   String bytesToHexString(List<int> bytes) =>
-      bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+      bytes.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ');
 
-  List<int> intToBytes(int value) => value.toString().codeUnits;
-
-  int bytesToInt(List<int> bytes) =>
-      int.tryParse(String.fromCharCodes(bytes)) ?? 0;
+  /// Encode int as 2-byte little-endian (matches Android longToHexArr for val<=0xFFFF)
+  List<int> int16ToLEBytes(int value) => [value & 0xFF, (value >> 8) & 0xFF];
 
   String? parseBatteryVoltage(List<int> bytes) {
     try {
