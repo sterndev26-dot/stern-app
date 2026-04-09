@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/guyb/Documents/sternandroid/app/src/main/java/benkiser/msapps/com/benkiser/utils/**)",
+      "Read(//c/Users/guyb/Documents/sternandroid/app/src/main/java/benkiser/msapps/com/benkiser/model/ble/**)",
+      "Read(//c/Users/guyb/Documents/sternandroid/app/src/main/java/benkiser/msapps/com/benkiser/view/activities/**)"
+    ]
+  }
+}
