@@ -1,86 +1,105 @@
 import 'dart:async';
+import 'dart:developer' as dev;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../../models/stern_product.dart';
 import '../../models/stern_types.dart';
 import '../../utils/constants.dart';
 
+/// BLE service singleton — manages scanning, connection, read/write, notifications.
+/// Fixes applied:
+///   - Service cache (no repeated discoverServices per operation)
+///   - Watchdog timer (auto-disconnect if device stops responding)
+///   - All stream subscriptions tracked and cancelled on dispose
+///   - Error logging via dart:developer
+///   - Adapter state check before operations
 class BleService {
   static final BleService _instance = BleService._internal();
   factory BleService() => _instance;
   BleService._internal();
 
-  StreamSubscription<List<ScanResult>>? _scanSubscription;
-  StreamSubscription<BluetoothAdapterState>? _adapterSubscription;
-
+  // --- Streams ---
   final _scanResultController = StreamController<SternProduct?>.broadcast();
-  final _connectionStateController = StreamController<bool>.broadcast();
+  final _connectionStateController = StreamController<String>.broadcast();
 
   Stream<SternProduct?> get scanResults => _scanResultController.stream;
-  Stream<bool> get connectionState => _connectionStateController.stream;
+  /// Emits: 'connected' | 'disconnected' | 'connecting' | 'error'
+  Stream<String> get connectionState => _connectionStateController.stream;
 
-  bool _isScanning = false;
-  bool get isScanning => _isScanning;
+  // --- State ---
+  StreamSubscription<List<ScanResult>>? _scanSub;
+  StreamSubscription<BluetoothAdapterState>? _adapterSub;
+  StreamSubscription<BluetoothConnectionState>? _deviceConnectionSub;
+  final List<StreamSubscription<List<int>>> _notificationSubs = [];
 
   BluetoothDevice? _connectedDevice;
   BluetoothDevice? get connectedDevice => _connectedDevice;
 
-  // --- Scanning ---
+  bool _isScanning = false;
+  bool get isScanning => _isScanning;
+
+  /// Cache of discovered services — avoids repeated discoverServices() calls
+  List<BluetoothService> _cachedServices = [];
+
+  /// Watchdog: disconnects if no BLE response within [_watchdogTimeout]
+  Timer? _watchdogTimer;
+  static const _watchdogTimeout = Duration(seconds: 30);
+
+  // ─────────────────────────────────────────
+  // SCANNING
+  // ─────────────────────────────────────────
 
   Future<void> startScan() async {
     if (_isScanning) return;
-    _isScanning = true;
 
+    final adapterState = await FlutterBluePlus.adapterState.first;
+    if (adapterState != BluetoothAdapterState.on) {
+      dev.log('BLE adapter not on: $adapterState', name: 'BleService');
+      _scanResultController.add(null);
+      return;
+    }
+
+    _isScanning = true;
     await FlutterBluePlus.stopScan();
 
-    _scanSubscription?.cancel();
-    _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
-      for (final result in results) {
-        final product = _parseScanResult(result);
-        if (product != null) {
-          _scanResultController.add(product);
+    _scanSub?.cancel();
+    _scanSub = FlutterBluePlus.scanResults.listen(
+      (results) {
+        for (final r in results) {
+          final product = _parseScanResult(r);
+          if (product != null) _scanResultController.add(product);
         }
-      }
-    });
-
-    await FlutterBluePlus.startScan(
-      timeout: const Duration(seconds: 10),
+      },
+      onError: (e) => dev.log('Scan error: $e', name: 'BleService'),
     );
 
+    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
+
     _isScanning = false;
-    // Signal scan ended with null
-    _scanResultController.add(null);
+    _scanResultController.add(null); // signals scan finished
+    dev.log('Scan finished', name: 'BleService');
   }
 
   Future<void> stopScan() async {
     _isScanning = false;
     await FlutterBluePlus.stopScan();
-    _scanSubscription?.cancel();
-    _scanSubscription = null;
+    _scanSub?.cancel();
+    _scanSub = null;
   }
 
   SternProduct? _parseScanResult(ScanResult result) {
-    final serviceUuids = result.advertisementData.serviceUuids
+    final uuids = result.advertisementData.serviceUuids
         .map((u) => u.str128.toLowerCase())
         .toList();
 
     SternTypes? type;
-    for (final uuid in serviceUuids) {
-      if (uuid == BleGattAttributes.sternFaucetUuid) {
-        type = SternTypes.faucet;
-      } else if (uuid == BleGattAttributes.sternShowerUuid) {
-        type = SternTypes.shower;
-      } else if (uuid == BleGattAttributes.sternWcUuid) {
-        type = SternTypes.wc;
-      } else if (uuid == BleGattAttributes.sternUrinalUuid) {
-        type = SternTypes.urinal;
-      } else if (uuid == BleGattAttributes.sternWaveOnOffUuid) {
-        type = SternTypes.waveOnOff;
-      } else if (uuid == BleGattAttributes.sternSoapUuid) {
-        type = SternTypes.soapDispenser;
-      } else if (uuid == BleGattAttributes.sternFoamSoapUuid) {
-        type = SternTypes.foamSoapDispenser;
-      }
-      if (type != null) break;
+    for (final uuid in uuids) {
+      if (uuid == BleGattAttributes.sternFaucetUuid)        { type = SternTypes.faucet; break; }
+      if (uuid == BleGattAttributes.sternShowerUuid)        { type = SternTypes.shower; break; }
+      if (uuid == BleGattAttributes.sternWcUuid)            { type = SternTypes.wc; break; }
+      if (uuid == BleGattAttributes.sternUrinalUuid)        { type = SternTypes.urinal; break; }
+      if (uuid == BleGattAttributes.sternWaveOnOffUuid)     { type = SternTypes.waveOnOff; break; }
+      if (uuid == BleGattAttributes.sternSoapUuid)          { type = SternTypes.soapDispenser; break; }
+      if (uuid == BleGattAttributes.sternFoamSoapUuid)      { type = SternTypes.foamSoapDispenser; break; }
     }
 
     if (type == null) return null;
@@ -97,90 +116,196 @@ class BleService {
     );
   }
 
-  // --- Connection ---
+  // ─────────────────────────────────────────
+  // CONNECTION
+  // ─────────────────────────────────────────
 
   Future<bool> connectToDevice(BluetoothDevice device) async {
+    _connectionStateController.add('connecting');
+    dev.log('Connecting to ${device.remoteId}', name: 'BleService');
+
     try {
       await device.connect(timeout: const Duration(seconds: 15));
       _connectedDevice = device;
-      _connectionStateController.add(true);
+
+      // Listen to device disconnect events
+      _deviceConnectionSub?.cancel();
+      _deviceConnectionSub = device.connectionState.listen((state) {
+        if (state == BluetoothConnectionState.disconnected) {
+          dev.log('Device disconnected', name: 'BleService');
+          _onDeviceDisconnected();
+        }
+      });
+
+      // Discover and cache services once
+      _cachedServices = await device.discoverServices();
+      dev.log('Discovered ${_cachedServices.length} services', name: 'BleService');
+
+      _startWatchdog();
+      _connectionStateController.add('connected');
       return true;
     } catch (e) {
-      _connectionStateController.add(false);
+      dev.log('Connection failed: $e', name: 'BleService');
+      _connectionStateController.add('error');
+      _onDeviceDisconnected();
       return false;
     }
   }
 
   Future<void> disconnect() async {
-    await _connectedDevice?.disconnect();
-    _connectedDevice = null;
-    _connectionStateController.add(false);
+    _watchdogTimer?.cancel();
+    try {
+      await _connectedDevice?.disconnect();
+    } catch (e) {
+      dev.log('Disconnect error: $e', name: 'BleService');
+    }
+    _onDeviceDisconnected();
   }
 
-  // --- Read / Write characteristics ---
+  void _onDeviceDisconnected() {
+    _connectedDevice = null;
+    _cachedServices = [];
+    _watchdogTimer?.cancel();
+    _cancelNotificationSubs();
+    _deviceConnectionSub?.cancel();
+    _deviceConnectionSub = null;
+    if (!_connectionStateController.isClosed) {
+      _connectionStateController.add('disconnected');
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // WATCHDOG
+  // ─────────────────────────────────────────
+
+  void _startWatchdog() {
+    _watchdogTimer?.cancel();
+    _watchdogTimer = Timer(_watchdogTimeout, () {
+      dev.log('Watchdog triggered — device not responding', name: 'BleService');
+      disconnect();
+    });
+  }
+
+  /// Call this every time BLE data is received to reset the watchdog
+  void resetWatchdog() {
+    if (_connectedDevice != null) _startWatchdog();
+  }
+
+  // ─────────────────────────────────────────
+  // READ / WRITE (uses cached services)
+  // ─────────────────────────────────────────
+
+  BluetoothCharacteristic? _findCharacteristic(
+      String serviceUuid, String charUuid) {
+    final svcUuid = serviceUuid.toLowerCase();
+    final chrUuid = charUuid.toLowerCase();
+    for (final service in _cachedServices) {
+      if (service.uuid.str128.toLowerCase() == svcUuid) {
+        for (final char in service.characteristics) {
+          if (char.uuid.str128.toLowerCase() == chrUuid) return char;
+        }
+      }
+    }
+    dev.log('Characteristic not found: $charUuid', name: 'BleService');
+    return null;
+  }
 
   Future<List<int>?> readCharacteristic(
       String serviceUuid, String charUuid) async {
     if (_connectedDevice == null) return null;
     try {
-      final services = await _connectedDevice!.discoverServices();
-      for (final service in services) {
-        if (service.uuid.str128.toLowerCase() == serviceUuid.toLowerCase()) {
-          for (final char in service.characteristics) {
-            if (char.uuid.str128.toLowerCase() == charUuid.toLowerCase()) {
-              return await char.read();
-            }
-          }
-        }
-      }
-    } catch (_) {}
-    return null;
+      final char = _findCharacteristic(serviceUuid, charUuid);
+      if (char == null) return null;
+      final data = await char.read();
+      resetWatchdog();
+      return data;
+    } catch (e) {
+      dev.log('Read error [$charUuid]: $e', name: 'BleService');
+      return null;
+    }
   }
 
   Future<bool> writeCharacteristic(
       String serviceUuid, String charUuid, List<int> data) async {
     if (_connectedDevice == null) return false;
     try {
-      final services = await _connectedDevice!.discoverServices();
-      for (final service in services) {
-        if (service.uuid.str128.toLowerCase() == serviceUuid.toLowerCase()) {
-          for (final char in service.characteristics) {
-            if (char.uuid.str128.toLowerCase() == charUuid.toLowerCase()) {
-              await char.write(data, withoutResponse: false);
-              return true;
-            }
-          }
-        }
-      }
-    } catch (_) {}
-    return false;
+      final char = _findCharacteristic(serviceUuid, charUuid);
+      if (char == null) return false;
+      await char.write(data, withoutResponse: false);
+      resetWatchdog();
+      return true;
+    } catch (e) {
+      dev.log('Write error [$charUuid]: $e', name: 'BleService');
+      return false;
+    }
   }
 
-  Future<void> subscribeToNotifications(
+  // ─────────────────────────────────────────
+  // NOTIFICATIONS (tracked subscriptions + CCCD)
+  // ─────────────────────────────────────────
+
+  Future<bool> subscribeToNotifications(
       String serviceUuid,
       String charUuid,
       void Function(List<int> data) onData) async {
-    if (_connectedDevice == null) return;
+    if (_connectedDevice == null) return false;
     try {
-      final services = await _connectedDevice!.discoverServices();
-      for (final service in services) {
-        if (service.uuid.str128.toLowerCase() == serviceUuid.toLowerCase()) {
-          for (final char in service.characteristics) {
-            if (char.uuid.str128.toLowerCase() == charUuid.toLowerCase()) {
-              await char.setNotifyValue(true);
-              char.lastValueStream.listen(onData);
-              return;
-            }
-          }
-        }
-      }
-    } catch (_) {}
+      final char = _findCharacteristic(serviceUuid, charUuid);
+      if (char == null) return false;
+
+      // Enable CCCD descriptor so device actually sends notifications
+      await char.setNotifyValue(true);
+
+      final sub = char.lastValueStream.listen(
+        (data) {
+          resetWatchdog();
+          onData(data);
+        },
+        onError: (e) => dev.log('Notification error [$charUuid]: $e', name: 'BleService'),
+      );
+
+      _notificationSubs.add(sub);
+      dev.log('Subscribed to notifications: $charUuid', name: 'BleService');
+      return true;
+    } catch (e) {
+      dev.log('Subscribe error [$charUuid]: $e', name: 'BleService');
+      return false;
+    }
   }
 
+  void _cancelNotificationSubs() {
+    for (final sub in _notificationSubs) {
+      sub.cancel();
+    }
+    _notificationSubs.clear();
+  }
+
+  // ─────────────────────────────────────────
+  // ADAPTER STATE MONITORING
+  // ─────────────────────────────────────────
+
+  void startAdapterMonitoring() {
+    _adapterSub?.cancel();
+    _adapterSub = FlutterBluePlus.adapterState.listen((state) {
+      dev.log('BT adapter state: $state', name: 'BleService');
+      if (state == BluetoothAdapterState.off && _connectedDevice != null) {
+        _onDeviceDisconnected();
+      }
+    });
+  }
+
+  // ─────────────────────────────────────────
+  // DISPOSE
+  // ─────────────────────────────────────────
+
   void dispose() {
+    _watchdogTimer?.cancel();
     stopScan();
-    _scanResultController.close();
-    _connectionStateController.close();
-    _adapterSubscription?.cancel();
+    _cancelNotificationSubs();
+    _deviceConnectionSub?.cancel();
+    _adapterSub?.cancel();
+    if (!_scanResultController.isClosed) _scanResultController.close();
+    if (!_connectionStateController.isClosed) _connectionStateController.close();
+    dev.log('BleService disposed', name: 'BleService');
   }
 }

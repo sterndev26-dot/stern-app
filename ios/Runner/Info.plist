@@ -28,32 +28,35 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+
+	<!-- Bluetooth Permissions (required by Apple) -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Stern App uses Bluetooth to connect and control Stern hygiene products such as faucets, toilets and dispensers.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Stern App uses Bluetooth to connect and control Stern hygiene products such as faucets, toilets and dispensers.</string>
+
+	<!-- Location required for BLE scanning on iOS 13+ -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location access is required to scan for nearby Stern Bluetooth devices.</string>
+
+	<!-- Local Network required for BLE discovery on iOS 14+ -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Stern App scans for nearby Stern hygiene products on the local network.</string>
+
+	<!-- Orientation: Portrait only (matching Android source) -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Stern needs Bluetooth to connect and control Stern hygiene products.</string>
-	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Stern needs Bluetooth to connect and control Stern hygiene products.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Location access is required to scan for nearby Bluetooth devices.</string>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	</array>
 </dict>
 </plist>
