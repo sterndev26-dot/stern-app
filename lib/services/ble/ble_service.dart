@@ -120,6 +120,18 @@ class BleService {
   // CONNECTION
   // ─────────────────────────────────────────
 
+  /// Connect by MAC address — reconstructs BluetoothDevice from ID.
+  Future<bool> connectByMac(String macAddress) async {
+    try {
+      final device = BluetoothDevice.fromId(macAddress);
+      return await connectToDevice(device);
+    } catch (e) {
+      dev.log('connectByMac error: $e', name: 'BleService');
+      _connectionStateController.add('error');
+      return false;
+    }
+  }
+
   Future<bool> connectToDevice(BluetoothDevice device) async {
     _connectionStateController.add('connecting');
     dev.log('Connecting to ${device.remoteId}', name: 'BleService');

@@ -114,8 +114,52 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
     });
   }
 
-  void _onProductTapped(SternProduct product) {
-    _bleService.stopScan();
+  Future<void> _onProductTapped(SternProduct product) async {
+    if (product.macAddress == null) return;
+    await _bleService.stopScan();
+
+    // Show connecting dialog
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(color: Color(0xFF1A73E8)),
+            SizedBox(width: 20),
+            Text('Connecting...'),
+          ],
+        ),
+      ),
+    );
+
+    final connected = await _bleService.connectByMac(product.macAddress!);
+
+    if (!mounted) return;
+    Navigator.of(context).pop(); // close connecting dialog
+
+    if (!connected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to connect. Try again.')),
+      );
+      return;
+    }
+
+    // Save / update product in DB with new lastConnected timestamp
+    final now = DateTime.now().toString();
+    product.lastConnected = now;
+    product.isPreviouslyConnected = true;
+    final existing = await _db.getProductByMac(product.macAddress!);
+    if (existing != null) {
+      existing.lastConnected = now;
+      existing.nearby = true;
+      await _db.updateProduct(existing);
+    } else {
+      await _db.insertProduct(product);
+    }
+
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => MainScreen(product: product)),
     );
