@@ -10,6 +10,7 @@ class PermissionService {
   PermissionService._internal();
 
   /// Returns true if all required permissions are granted.
+  /// If permanently denied, opens app Settings so user can enable manually.
   Future<bool> requestBlePermissions() async {
     if (Platform.isIOS) {
       return _requestIosPermissions();
@@ -26,8 +27,8 @@ class PermissionService {
   }
 
   Future<bool> _requestAndroidPermissions() async {
-    // Android 12+ (API 31+) requires BLUETOOTH_SCAN + BLUETOOTH_CONNECT
-    // Android < 12 requires ACCESS_FINE_LOCATION
+    // Android 12+ (API 31+): BLUETOOTH_SCAN + BLUETOOTH_CONNECT
+    // All versions: ACCESS_FINE_LOCATION (required for BLE scan results)
     final permissions = [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
@@ -35,7 +36,17 @@ class PermissionService {
     ];
 
     final statuses = await permissions.request();
-    dev.log('Android permissions: $statuses', name: 'PermissionService');
+    dev.log('Android BLE permissions: $statuses', name: 'PermissionService');
+
+    // If any permission is permanently denied, open app settings
+    for (final entry in statuses.entries) {
+      if (entry.value.isPermanentlyDenied) {
+        dev.log('Permission permanently denied: ${entry.key} — opening settings',
+            name: 'PermissionService');
+        await openAppSettings();
+        return false;
+      }
+    }
 
     final allGranted = statuses.values.every(
       (s) => s.isGranted || s.isLimited,
@@ -44,7 +55,7 @@ class PermissionService {
     return allGranted;
   }
 
-  /// Check without requesting — useful to show UI state
+  /// Check without requesting
   Future<bool> areBlePermissionsGranted() async {
     if (Platform.isIOS) {
       return (await Permission.bluetooth.status).isGranted;
@@ -52,6 +63,8 @@ class PermissionService {
     final scan = await Permission.bluetoothScan.status;
     final connect = await Permission.bluetoothConnect.status;
     final location = await Permission.locationWhenInUse.status;
-    return scan.isGranted && connect.isGranted && location.isGranted;
+    return (scan.isGranted || scan.isLimited) &&
+        (connect.isGranted || connect.isLimited) &&
+        (location.isGranted || location.isLimited);
   }
 }

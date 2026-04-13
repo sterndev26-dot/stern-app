@@ -51,6 +51,7 @@ class BleService {
   Future<void> startScan() async {
     if (_isScanning) return;
 
+    // Check BT adapter
     final adapterState = await FlutterBluePlus.adapterState.first;
     if (adapterState != BluetoothAdapterState.on) {
       dev.log('BLE adapter not on: $adapterState', name: 'BleService');
@@ -69,10 +70,18 @@ class BleService {
           if (product != null) _scanResultController.add(product);
         }
       },
-      onError: (e) => dev.log('Scan error: $e', name: 'BleService'),
+      onError: (e) {
+        dev.log('Scan error: $e', name: 'BleService');
+        _isScanning = false;
+        _scanResultController.add(null);
+      },
     );
 
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
+    try {
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
+    } catch (e) {
+      dev.log('startScan failed: $e', name: 'BleService');
+    }
 
     _isScanning = false;
     _scanResultController.add(null); // signals scan finished
