@@ -2,7 +2,7 @@ name: stern_app
 description: "Stern BLE App - Manage Stern hygiene products via Bluetooth"
 publish_to: 'none'
 
-version: 1.0.67+1
+version: 0.0.1+1
 
 environment:
   sdk: ^3.7.2

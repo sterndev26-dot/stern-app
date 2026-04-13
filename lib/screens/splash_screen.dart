@@ -12,7 +12,7 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  static const _appVersion = '1.0.67';
+  static const _appVersion = '0.0.1';
 
   @override
   void initState() {
