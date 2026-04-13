@@ -14,7 +14,7 @@ class _PasswordScreenState extends State<PasswordScreen> {
   final _passwordController = TextEditingController();
   bool _isConnectEnabled = false;
 
-  static const _appBlue = Color(0xFF1A73E8);
+  static const _appTeal = Color(0xFF0097A7);
 
   @override
   void dispose() {
@@ -134,12 +134,12 @@ class _PasswordScreenState extends State<PasswordScreen> {
                               ),
                               decoration: BoxDecoration(
                                 color: _isConnectEnabled
-                                    ? _appBlue
+                                    ? _appTeal
                                     : Colors.grey[400],
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: const Text(
-                                'Connect',
+                                'Login',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
@@ -157,11 +157,11 @@ class _PasswordScreenState extends State<PasswordScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           decoration: BoxDecoration(
-                            color: _appBlue,
+                            color: _appTeal,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text(
-                            'Guest Connect',
+                            'Continue as Guest',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.white,
