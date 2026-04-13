@@ -276,7 +276,16 @@ class _OperateScreenState extends State<OperateScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 8),
+          // Product image
+          Center(
+            child: Image.asset(
+              widget.product.imagePath,
+              width: 80,
+              height: 80,
+              fit: BoxFit.contain,
+            ),
+          ),
+          const SizedBox(height: 16),
 
           // ── Hygiene / Soap ──────────────────────────
           _SectionCard(

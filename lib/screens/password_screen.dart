@@ -67,71 +67,115 @@ class _PasswordScreenState extends State<PasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Image.asset('assets/images/neutral_app_opening.png', fit: BoxFit.cover),
+          // Full-screen background image
+          Image.asset(
+            'assets/images/neutral_app_opening.png',
+            fit: BoxFit.cover,
+          ),
+          // Content overlay
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Row(
+            child: Column(
+              children: [
+                const Spacer(),
+                // Input area at the bottom
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _passwordController,
-                          obscureText: true,
-                          onChanged: _onPasswordChanged,
-                          onSubmitted: (_) { if (_isConnectEnabled) _onConnect(); },
-                          decoration: const InputDecoration(
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(borderSide: BorderSide.none),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      // Password row: field + Connect button
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _passwordController,
+                              obscureText: true,
+                              keyboardType: TextInputType.number,
+                              textInputAction: TextInputAction.done,
+                              onChanged: _onPasswordChanged,
+                              onSubmitted: (_) {
+                                if (_isConnectEnabled) _onConnect();
+                              },
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: Colors.black87,
+                              ),
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: Colors.white,
+                                hintText: 'Password',
+                                hintStyle: TextStyle(
+                                  color: Colors.grey[400],
+                                  fontSize: 14,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 14,
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: _isConnectEnabled ? _onConnect : null,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 14,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _isConnectEnabled
+                                    ? _appBlue
+                                    : Colors.grey[400],
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'Connect',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(height: 10),
+                      // Guest Connect full-width button
                       GestureDetector(
-                        onTap: _isConnectEnabled ? _onConnect : null,
+                        onTap: _onGuestConnect,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                           decoration: BoxDecoration(
-                            color: _isConnectEnabled ? _appBlue : Colors.grey,
+                            color: _appBlue,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text(
-                            'Connect',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            'Guest Connect',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: GestureDetector(
-                      onTap: _onGuestConnect,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: _appBlue,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'Guest Connect',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                ],
-              ),
+                ),
+                const SizedBox(height: 32),
+              ],
             ),
           ),
         ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/stern_product.dart';
+import '../models/stern_types.dart';
 import '../models/user.dart';
 import 'operate_screen.dart';
 import 'statistics_screen.dart';
@@ -49,35 +50,58 @@ class _MainScreenState extends State<MainScreen> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           child: Row(
             children: [
+              // Back arrow
               GestureDetector(
                 onTap: () => Navigator.of(context).pop(),
                 child: Image.asset('assets/images/arrow.png',
                     width: 28, height: 28),
               ),
               const SizedBox(width: 12),
+              // Product type icon
+              Image.asset(
+                widget.product.imagePath,
+                width: 36,
+                height: 36,
+              ),
+              const SizedBox(width: 10),
+              // Product name + subtitle
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(widget.product.name,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold)),
-                    const Text('Settings',
-                        style:
-                            TextStyle(color: Colors.white70, fontSize: 14)),
+                    Text(
+                      widget.product.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      widget.product.type.displayName,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                      ),
+                    ),
                   ],
                 ),
               ),
+              // Info icon
               GestureDetector(
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
                     builder: (_) =>
-                        ProductInformationScreen(product: widget.product))),
+                        ProductInformationScreen(product: widget.product),
+                  ),
+                ),
                 child: const Icon(Icons.info_outline,
                     color: Colors.white, size: 28),
               ),
               const SizedBox(width: 12),
+              // Help icon
               GestureDetector(
                 onTap: () => showDialog(
                     context: context,
@@ -94,13 +118,25 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget _buildBottomNav() {
     final items = <BottomNavigationBarItem>[
+      BottomNavigationBarItem(
+        icon: ImageIcon(
+          const AssetImage('assets/images/aperatedea.png'),
+          size: 28,
+        ),
+        label: 'Operate',
+      ),
       const BottomNavigationBarItem(
-          icon: Icon(Icons.play_circle_outline), label: 'Operate'),
-      const BottomNavigationBarItem(
-          icon: Icon(Icons.bar_chart), label: 'Statistics'),
+        icon: Icon(Icons.bar_chart),
+        label: 'Statistics',
+      ),
       if (_isTechnician)
-        const BottomNavigationBarItem(
-            icon: Icon(Icons.settings), label: 'Settings'),
+        BottomNavigationBarItem(
+          icon: ImageIcon(
+            const AssetImage('assets/images/settingsdea.png'),
+            size: 28,
+          ),
+          label: 'Settings',
+        ),
     ];
 
     return BottomNavigationBar(

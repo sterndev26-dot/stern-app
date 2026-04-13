@@ -226,11 +226,11 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
                         width: 28, height: 28),
                   ),
                   const Spacer(),
-                  const Text('STERN',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold)),
+                  Image.asset(
+                    'assets/images/logo_white.png',
+                    height: 32,
+                    fit: BoxFit.contain,
+                  ),
                   const Spacer(),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
