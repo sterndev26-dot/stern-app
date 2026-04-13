@@ -361,14 +361,10 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
                 _activeTypeFilters.add(type);
               }
             }),
-            child: Container(
-              margin: const EdgeInsets.only(right: 12),
-              child: ColorFiltered(
-                colorFilter: selected
-                    ? const ColorFilter.mode(
-                        Color(0xFF0097A7), BlendMode.srcIn)
-                    : const ColorFilter.mode(
-                        Color(0xFF9E9E9E), BlendMode.srcIn),
+            child: Opacity(
+              opacity: selected ? 1.0 : 0.4,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 12),
                 child: Image.asset(type.imagePath, width: 44, height: 44),
               ),
             ),
@@ -474,12 +470,7 @@ class _ProductTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         children: [
-          // Product icon (grey tinted)
-          ColorFiltered(
-            colorFilter: const ColorFilter.mode(
-                Color(0xFF9E9E9E), BlendMode.srcIn),
-            child: Image.asset(product.imagePath, width: 52, height: 52),
-          ),
+          Image.asset(product.imagePath, width: 52, height: 52),
           const SizedBox(width: 12),
           // Text info
           Expanded(
