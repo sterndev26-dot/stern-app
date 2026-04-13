@@ -16,7 +16,7 @@ class StatisticsScreen extends StatefulWidget {
 }
 
 class _StatisticsScreenState extends State<StatisticsScreen> {
-  static const _appBlue = Color(0xFF1A73E8);
+  static const _appTeal = Color(0xFF0097A7);
 
   final _ble = BleService();
   final _parser = BleDataParser();
@@ -266,14 +266,14 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                           icon: const Icon(Icons.refresh),
                           label: const Text('Retry'),
                           style: OutlinedButton.styleFrom(
-                              foregroundColor: _appBlue),
+                              foregroundColor: _appTeal),
                         ),
                       ],
                     ),
                   )
                 : RefreshIndicator(
                     onRefresh: _loadStatistics,
-                    color: _appBlue,
+                    color: _appTeal,
                     child: ListView.separated(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
                       itemCount: _stats.length,
@@ -288,7 +288,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           right: 16,
           child: FloatingActionButton.extended(
             onPressed: _isSending ? null : _sendReport,
-            backgroundColor: _appBlue,
+            backgroundColor: _appTeal,
             foregroundColor: Colors.white,
             icon: _isSending
                 ? const SizedBox(
@@ -310,8 +310,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: _appBlue.withValues(alpha: 0.12),
-          child: Icon(item.icon, color: _appBlue, size: 20),
+          backgroundColor: _appTeal.withValues(alpha: 0.12),
+          child: Icon(item.icon, color: _appTeal, size: 20),
         ),
         title: Text(item.label,
             style: TextStyle(

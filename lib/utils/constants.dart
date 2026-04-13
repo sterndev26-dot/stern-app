@@ -1,7 +1,7 @@
 class AppConstants {
   // Shared preferences keys
   static const String sharedPrefName = 'stern.msapps.com.stern';
-  static const String sharedPrefTechnicianPassword = '4321';
+  static const String sharedPrefTechnicianPassword = '654321';
   static const String sharedPrefUserPassword = 'shared_pref_user_password';
   static const String sharedPrefPasswordGeneral = 'shared_pref_password_general';
   static const String sharedPrefUserHandleId = 'event_set_data';
@@ -13,7 +13,7 @@ class AppConstants {
   static const String sharedUserType = 'user_type';
 
   // App colors
-  static const int appBlueColorHex = 0xFF1A73E8;
+  static const int appTealColorHex = 0xFF0097A7;
   static const int appWhiteHex = 0xFFFFFFFF;
   static const int appBlackTextHex = 0xFF212121;
 }

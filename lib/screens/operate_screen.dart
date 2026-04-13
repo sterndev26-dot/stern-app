@@ -7,6 +7,8 @@ import '../models/user.dart';
 import '../services/ble/ble_service.dart';
 import '../utils/constants.dart';
 
+const _kTeal = Color(0xFF0097A7);
+
 class OperateScreen extends StatefulWidget {
   final SternProduct product;
 
@@ -18,7 +20,6 @@ class OperateScreen extends StatefulWidget {
 
 class _OperateScreenState extends State<OperateScreen>
     with SingleTickerProviderStateMixin {
-  static const _appBlue = Color(0xFF1A73E8);
   static const int _stepSize = 5;
 
   late TabController _tabController;
@@ -256,9 +257,9 @@ class _OperateScreenState extends State<OperateScreen>
       color: Colors.white,
       child: TabBar(
         controller: _tabController,
-        labelColor: _appBlue,
+        labelColor: _kTeal,
         unselectedLabelColor: Colors.grey,
-        indicatorColor: _appBlue,
+        indicatorColor: _kTeal,
         tabs: const [
           Tab(text: 'Activate Now'),
           Tab(text: 'Presets'),
@@ -303,7 +304,7 @@ class _OperateScreenState extends State<OperateScreen>
                       style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: _appBlue),
+                          color: _kTeal),
                     ),
                   ],
                 ),
@@ -312,7 +313,7 @@ class _OperateScreenState extends State<OperateScreen>
                   min: 0,
                   max: 100,
                   divisions: 20,
-                  activeColor: _appBlue,
+                  activeColor: _kTeal,
                   label: '${_snap(_hygieneValue)} s',
                   onChanged: _isValveOpen
                       ? null
@@ -325,7 +326,7 @@ class _OperateScreenState extends State<OperateScreen>
                     onPressed: _isActivating ? null : _activate,
                     style: ElevatedButton.styleFrom(
                       backgroundColor:
-                          _isValveOpen ? Colors.red : _appBlue,
+                          _isValveOpen ? Colors.red : _kTeal,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
@@ -368,7 +369,7 @@ class _OperateScreenState extends State<OperateScreen>
                       style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: _appBlue),
+                          color: _kTeal),
                     ),
                   ],
                 ),
@@ -377,7 +378,7 @@ class _OperateScreenState extends State<OperateScreen>
                   min: 0,
                   max: 100,
                   divisions: 20,
-                  activeColor: _appBlue,
+                  activeColor: _kTeal,
                   label: '${_snap(_standbyValue)} min',
                   onChanged: (v) => setState(() => _standbyValue = v),
                 ),
@@ -387,8 +388,8 @@ class _OperateScreenState extends State<OperateScreen>
                   child: OutlinedButton(
                     onPressed: _isStandbyBusy ? null : _standby,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: _appBlue,
-                      side: const BorderSide(color: _appBlue),
+                      foregroundColor: _kTeal,
+                      side: const BorderSide(color: _kTeal),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8)),
@@ -398,7 +399,7 @@ class _OperateScreenState extends State<OperateScreen>
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: _appBlue))
+                                strokeWidth: 2, color: _kTeal))
                         : const Text('Set Standby',
                             style: TextStyle(fontSize: 16)),
                   ),
@@ -455,7 +456,7 @@ class _OperateScreenState extends State<OperateScreen>
                 labelText: 'Preset name',
                 border: const OutlineInputBorder(),
                 suffixIcon: IconButton(
-                  icon: const Icon(Icons.check, color: _appBlue),
+                  icon: const Icon(Icons.check, color: _kTeal),
                   onPressed: _savePreset,
                 ),
               ),
@@ -475,10 +476,10 @@ class _OperateScreenState extends State<OperateScreen>
                       return ListTile(
                         title: Text(name),
                         leading: const Icon(Icons.bookmark_outline,
-                            color: _appBlue),
+                            color: _kTeal),
                         selected: _selectedPreset == name,
-                        selectedColor: _appBlue,
-                        selectedTileColor: _appBlue.withValues(alpha: 0.08),
+                        selectedColor: _kTeal,
+                        selectedTileColor: _kTeal.withValues(alpha: 0.08),
                         onTap: () =>
                             setState(() => _selectedPreset = name),
                         trailing: IconButton(
@@ -521,7 +522,7 @@ class _SectionCard extends StatelessWidget {
                 style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF1A73E8))),
+                    color: Color(0xFF0097A7))),
             const SizedBox(height: 8),
             child,
           ],
@@ -545,9 +546,9 @@ class _PresetButton extends StatelessWidget {
       child: OutlinedButton(
         onPressed: enabled ? onTap : null,
         style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFF1A73E8),
+          foregroundColor: const Color(0xFF0097A7),
           side: BorderSide(
-              color: enabled ? const Color(0xFF1A73E8) : Colors.grey),
+              color: enabled ? const Color(0xFF0097A7) : Colors.grey),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),

@@ -15,7 +15,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  static const _appBlue = Color(0xFF1A73E8);
+  static const _appTeal = Color(0xFF0097A7);
 
   final _ble = BleService();
   bool _isBusy = false;
@@ -215,7 +215,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       labelText: 'Preset name',
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: const Icon(Icons.check, color: _appBlue),
+                        icon: const Icon(Icons.check, color: _appTeal),
                         onPressed: _savePreset,
                       ),
                     ),
@@ -322,7 +322,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: ElevatedButton(
                     onPressed: _isBusy ? null : _apply,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _appBlue,
+                      backgroundColor: _appTeal,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
@@ -397,10 +397,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return ListTile(
             dense: true,
             title: Text(name),
-            leading: const Icon(Icons.bookmark_outline, color: _appBlue),
+            leading: const Icon(Icons.bookmark_outline, color: _appTeal),
             selected: _selectedPreset == name,
-            selectedColor: _appBlue,
-            selectedTileColor: _appBlue.withValues(alpha: 0.08),
+            selectedColor: _appTeal,
+            selectedTileColor: _appTeal.withValues(alpha: 0.08),
             onTap: () => setState(() => _selectedPreset = name),
             trailing: IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.red),
@@ -440,7 +440,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Text(
                   '${value.round()} $unit',
                   style: const TextStyle(
-                      color: _appBlue,
+                      color: _appTeal,
                       fontWeight: FontWeight.bold,
                       fontSize: 14),
                 ),
@@ -451,7 +451,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               min: min,
               max: max,
               divisions: (max - min).round(),
-              activeColor: _appBlue,
+              activeColor: _appTeal,
               label: '${value.round()} $unit',
               onChanged: onChanged,
             ),
@@ -486,7 +486,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: selected ? _appBlue : Colors.grey[200],
+                      color: selected ? _appTeal : Colors.grey[200],
                       shape: BoxShape.circle,
                     ),
                     alignment: Alignment.center,
@@ -516,7 +516,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         subtitle: Text(_simpleControlEnabled ? 'Enabled' : 'Disabled',
             style: TextStyle(color: Colors.grey[600], fontSize: 12)),
         value: _simpleControlEnabled,
-        activeColor: _appBlue,
+        activeColor: _appTeal,
         onChanged: (v) => setState(() => _simpleControlEnabled = v),
       ),
     );
@@ -537,9 +537,9 @@ class _PresetButton extends StatelessWidget {
       child: OutlinedButton(
         onPressed: enabled ? onTap : null,
         style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFF1A73E8),
+          foregroundColor: const Color(0xFF0097A7),
           side: BorderSide(
-              color: enabled ? const Color(0xFF1A73E8) : Colors.grey),
+              color: enabled ? const Color(0xFF0097A7) : Colors.grey),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),

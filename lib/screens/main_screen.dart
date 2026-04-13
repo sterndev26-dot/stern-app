@@ -17,7 +17,7 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  static const _appBlue = Color(0xFF1A73E8);
+  static const _appTeal = Color(0xFF0097A7);
   int _currentIndex = 0;
 
   bool get _isTechnician => User.instance.isTechnician;
@@ -43,7 +43,7 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget _buildHeader() {
     return Container(
-      color: _appBlue,
+      color: _appTeal,
       child: SafeArea(
         bottom: false,
         child: Padding(
@@ -141,7 +141,7 @@ class _MainScreenState extends State<MainScreen> {
 
     return BottomNavigationBar(
       currentIndex: _currentIndex,
-      selectedItemColor: _appBlue,
+      selectedItemColor: _appTeal,
       unselectedItemColor: Colors.grey,
       onTap: (i) => setState(() => _currentIndex = i),
       items: items,

@@ -18,7 +18,7 @@ class ProductInformationScreen extends StatefulWidget {
 }
 
 class _ProductInformationScreenState extends State<ProductInformationScreen> {
-  static const _appBlue = Color(0xFF1A73E8);
+  static const _appTeal = Color(0xFF0097A7);
   static const _maxNameLength = 22;
 
   final _nameController = TextEditingController();
@@ -153,7 +153,7 @@ class _ProductInformationScreenState extends State<ProductInformationScreen> {
           _buildHeader(),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: _appBlue))
+                ? const Center(child: CircularProgressIndicator(color: _appTeal))
                 : _buildInfoList(),
           ),
         ],
@@ -163,7 +163,7 @@ class _ProductInformationScreenState extends State<ProductInformationScreen> {
 
   Widget _buildHeader() {
     return Container(
-      color: _appBlue,
+      color: _appTeal,
       child: SafeArea(
         bottom: false,
         child: Padding(
@@ -278,7 +278,7 @@ class _ProductInformationScreenState extends State<ProductInformationScreen> {
               padding: const EdgeInsets.only(top: 20),
               child: Icon(
                 _isEditingName ? Icons.send : Icons.edit,
-                color: _appBlue,
+                color: _appTeal,
                 size: 24,
               ),
             ),
