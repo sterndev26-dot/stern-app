@@ -51,54 +51,56 @@ class _MainScreenState extends State<MainScreen> {
       color: _appTeal,
       child: SafeArea(
         bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-          child: Row(
-            children: [
-              // Back = disconnect + return to scan list
-              GestureDetector(
-                onTap: _disconnectAndGoBack,
-                child: const Icon(Icons.arrow_back,
-                    color: Colors.white, size: 26),
-              ),
-              const SizedBox(width: 12),
-              // Product icon
-              Image.asset(widget.product.imagePath,
-                  width: 36, height: 36),
-              const SizedBox(width: 10),
-              // Product name + type
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.product.name,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Row 1: back arrow | product type centered
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Back arrow left
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: GestureDetector(
+                      onTap: _disconnectAndGoBack,
+                      child: const Icon(Icons.arrow_back,
+                          color: Colors.white, size: 26),
                     ),
-                    Text(
-                      widget.product.type.displayName,
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 12),
+                  ),
+                  // Product type name centered
+                  Text(
+                    widget.product.type.displayName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              // Help button
-              GestureDetector(
+            ),
+            // Row 2: help icon bottom-left
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+              child: GestureDetector(
                 onTap: () => showDialog(
                     context: context,
                     builder: (_) => const _HelpDialog()),
-                child: const Icon(Icons.help_outline,
-                    color: Colors.white, size: 26),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                  child: const Icon(Icons.question_mark,
+                      color: Colors.white, size: 18),
+                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -107,18 +109,19 @@ class _MainScreenState extends State<MainScreen> {
   Widget _buildBottomNav() {
     final items = <BottomNavigationBarItem>[
       const BottomNavigationBarItem(
-        icon: Icon(Icons.assignment_outlined),
-        activeIcon: Icon(Icons.assignment),
+        icon: Icon(Icons.checklist_outlined),
+        activeIcon: Icon(Icons.checklist),
         label: 'Info',
       ),
       const BottomNavigationBarItem(
-        icon: Icon(Icons.handyman_outlined),
-        activeIcon: Icon(Icons.handyman),
+        icon: Icon(Icons.construction_outlined),
+        activeIcon: Icon(Icons.construction),
         label: 'Operate',
       ),
       if (_isTechnician)
         const BottomNavigationBarItem(
-          icon: Icon(Icons.tune),
+          icon: Icon(Icons.settings_input_svideo_outlined),
+          activeIcon: Icon(Icons.settings_input_svideo),
           label: 'Settings',
         ),
     ];
@@ -392,44 +395,33 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
       color: _appTeal,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Date/time sync button
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: _showDateTimeSyncDialog,
-                icon: const Icon(Icons.access_time, size: 18),
-                label: const Text('Sync Time'),
-                style: TextButton.styleFrom(foregroundColor: _appTeal),
-              ),
-            ),
-            const SizedBox(height: 4),
-
-            // Product Name (editable for technician)
+            // Product Name (editable)
             _buildNameField(),
-            const SizedBox(height: 8),
 
-            // Info rows
-            _infoRow(Icons.qr_code_outlined, 'Serial Number',
-                _product.serialNumber ?? '—'),
-            _infoRow(Icons.memory_outlined, 'BLE SW Version',
-                _product.swVersion ?? '—'),
-            _infoRow(Icons.battery_charging_full_outlined, 'Battery',
-                _product.batteryVoltage ?? '—'),
-            _infoRow(Icons.lock_open_outlined, 'Valve State',
-                _product.valveState ?? '—'),
-            _infoRow(Icons.calendar_today_outlined, 'Device Date & Time',
-                _product.lastUpdate ?? '—'),
-            _infoRow(Icons.bluetooth_connected, 'Last Connected',
-                _product.lastConnected ?? '—'),
-            _infoRow(Icons.category_outlined, 'Product Type',
-                _product.type.displayName),
-            if (_product.dayleUsage != null)
-              _infoRow(Icons.water_drop_outlined, 'Daily Usage',
-                  _product.dayleUsage!),
+            // Product Type | Serial Number
+            _twoColRow(
+              'Product Type', _product.type.displayName,
+              'Serial Number', _product.serialNumber ?? '—',
+            ),
+
+            // BLE SW Version (full width with update date on right)
+            _swVersionRow(),
+
+            // Date | First Pairing Date
+            _twoColRow(
+              'Date', _product.lastUpdate ?? '—',
+              'First Pairing Date', _product.lastConnected ?? '—',
+            ),
+
+            // Battery | Valve State
+            _twoColRow(
+              'Battery', _product.batteryVoltage ?? '—',
+              'Valve State', _product.valveState ?? '—',
+            ),
           ],
         ),
       ),
@@ -441,84 +433,121 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Product Name',
-            style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey,
-                fontWeight: FontWeight.w500)),
-        const SizedBox(height: 4),
+        const Text(
+          'Product Name',
+          style: TextStyle(
+              fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+        ),
+        const SizedBox(height: 8),
         Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: TextField(
-                controller: _nameController,
-                focusNode: _nameFocus,
-                enabled: _isEditingName,
-                maxLength: _maxNameLength,
-                decoration: InputDecoration(
-                  counterText: _isEditingName ? null : '',
-                  errorText: _nameError,
-                  border: _isEditingName
-                      ? const OutlineInputBorder()
-                      : InputBorder.none,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                ),
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87),
-                onSubmitted: (_) => _submitName(),
+              child: _isEditingName
+                  ? TextField(
+                      controller: _nameController,
+                      focusNode: _nameFocus,
+                      maxLength: _maxNameLength,
+                      decoration: InputDecoration(
+                        errorText: _nameError,
+                        border: const OutlineInputBorder(),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                      ),
+                      style: const TextStyle(fontSize: 16),
+                      onSubmitted: (_) => _submitName(),
+                    )
+                  : Text(
+                      _nameController.text,
+                      style: const TextStyle(
+                          fontSize: 16, color: Colors.black87),
+                    ),
+            ),
+            const SizedBox(width: 12),
+            GestureDetector(
+              onTap: isTechnician ? _onEditPressed : null,
+              child: Icon(
+                _isEditingName ? Icons.check : Icons.edit,
+                color: isTechnician ? Colors.black87 : Colors.transparent,
+                size: 22,
               ),
             ),
-            if (isTechnician) ...[
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: _onEditPressed,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Icon(
-                    _isEditingName ? Icons.check_circle : Icons.edit,
-                    color: _appTeal,
-                    size: 24,
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
-        const Divider(color: Color(0xFFE0E0E0)),
+        const SizedBox(height: 12),
+        const Divider(color: Color(0xFFDDDDDD), height: 1),
+        const SizedBox(height: 4),
       ],
     );
   }
 
-  Widget _infoRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20, color: _appTeal),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                        fontWeight: FontWeight.w500)),
-                const SizedBox(height: 2),
-                Text(value,
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w500)),
-              ],
-            ),
+  Widget _twoColRow(
+      String label1, String val1, String label2, String val2) {
+    return Column(
+      children: [
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _labelValue(label1, val1)),
+            Expanded(child: _labelValue(label2, val2)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const Divider(color: Color(0xFFDDDDDD), height: 1),
+      ],
+    );
+  }
+
+  Widget _swVersionRow() {
+    // Shows: "BLE SW Version" label full-width
+    // Then: version on left, update date on right
+    return Column(
+      children: [
+        const SizedBox(height: 12),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'BLE SW Version',
+            style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _product.swVersion ?? '—',
+                style: const TextStyle(fontSize: 15, color: Colors.black87),
+              ),
+            ),
+            Text(
+              _product.lastUpdate ?? '—',
+              style: const TextStyle(fontSize: 14, color: Colors.black54),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const Divider(color: Color(0xFFDDDDDD), height: 1),
+      ],
+    );
+  }
+
+  Widget _labelValue(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87)),
+        const SizedBox(height: 4),
+        Text(value,
+            style: const TextStyle(fontSize: 15, color: Colors.black87)),
+      ],
     );
   }
 }
