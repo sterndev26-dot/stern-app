@@ -26,12 +26,13 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
   final List<SternProduct> _scannedProducts = [];
   List<SternProduct> _dbProducts = [];
 
-  _Tab _tab = _Tab.configured;
+  _Tab _tab = _Tab.unconfigured;
   bool _isScanning = false;
   bool _showSearch = false;
   String _searchQuery = '';
   final Set<SternTypes> _activeTypeFilters = {};
   bool _showTypeFilter = false;
+  StreamSubscription<SternProduct?>? _scanSub;
 
   @override
   void initState() {
@@ -40,9 +41,20 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
     _startScan();
   }
 
+  @override
+  void dispose() {
+    _scanSub?.cancel();
+    _bleService.stopScan();
+    super.dispose();
+  }
+
   Future<void> _loadDb() async {
     final products = await _db.getAllProducts();
-    if (mounted) setState(() => _dbProducts = products);
+    if (mounted) setState(() {
+      _dbProducts = products;
+      // Switch to configured if we have paired devices
+      if (products.isNotEmpty) _tab = _Tab.configured;
+    });
   }
 
   Future<void> _startScan() async {
@@ -52,7 +64,9 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
       _scannedProducts.clear();
     });
 
-    _bleService.scanResults.listen((product) {
+    // Cancel previous subscription before creating new one
+    await _scanSub?.cancel();
+    _scanSub = _bleService.scanResults.listen((product) {
       if (!mounted) return;
       if (product == null) {
         if (mounted) setState(() => _isScanning = false);
@@ -188,12 +202,6 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
       case UserType.undefined:
         return '';
     }
-  }
-
-  @override
-  void dispose() {
-    _bleService.stopScan();
-    super.dispose();
   }
 
   @override
