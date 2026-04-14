@@ -23,14 +23,19 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   static const _appTeal = Color(0xFF0097A7);
   int _currentIndex = 0;
+  late final List<Widget> _tabs;
 
   bool get _isTechnician => User.instance.isTechnician;
 
-  List<Widget> get _tabs => [
-        _DeviceInfoTab(product: widget.product),
-        OperateScreen(product: widget.product),
-        if (_isTechnician) SettingsScreen(product: widget.product),
-      ];
+  @override
+  void initState() {
+    super.initState();
+    _tabs = [
+      _DeviceInfoTab(product: widget.product, syncTimeOnInit: true),
+      OperateScreen(product: widget.product),
+      if (_isTechnician) SettingsScreen(product: widget.product),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -111,18 +116,18 @@ class _MainScreenState extends State<MainScreen> {
       const BottomNavigationBarItem(
         icon: Icon(Icons.checklist_outlined),
         activeIcon: Icon(Icons.checklist),
-        label: 'Info',
+        label: '',
       ),
       const BottomNavigationBarItem(
-        icon: Icon(Icons.construction_outlined),
-        activeIcon: Icon(Icons.construction),
-        label: 'Operate',
+        icon: Icon(Icons.handyman_outlined),
+        activeIcon: Icon(Icons.handyman),
+        label: '',
       ),
       if (_isTechnician)
         const BottomNavigationBarItem(
-          icon: Icon(Icons.settings_input_svideo_outlined),
-          activeIcon: Icon(Icons.settings_input_svideo),
-          label: 'Settings',
+          icon: Icon(Icons.tune),
+          activeIcon: Icon(Icons.tune),
+          label: '',
         ),
     ];
 
@@ -130,6 +135,8 @@ class _MainScreenState extends State<MainScreen> {
       currentIndex: _currentIndex,
       selectedItemColor: _appTeal,
       unselectedItemColor: Colors.grey,
+      showSelectedLabels: false,
+      showUnselectedLabels: false,
       onTap: (i) => setState(() => _currentIndex = i),
       items: items,
     );
@@ -150,7 +157,8 @@ class _MainScreenState extends State<MainScreen> {
 
 class _DeviceInfoTab extends StatefulWidget {
   final SternProduct product;
-  const _DeviceInfoTab({required this.product});
+  final bool syncTimeOnInit;
+  const _DeviceInfoTab({required this.product, this.syncTimeOnInit = false});
 
   @override
   State<_DeviceInfoTab> createState() => _DeviceInfoTabState();
@@ -181,7 +189,7 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
     _product = widget.product;
     _nameController.text = _product.name;
     _loadDeviceInfo().then((_) {
-      if (mounted) _showDateTimeSyncDialog();
+      if (mounted && widget.syncTimeOnInit) _showDateTimeSyncDialog();
     });
   }
 
@@ -414,7 +422,7 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
             // Date | First Pairing Date
             _twoColRow(
               'Date', _product.lastUpdate ?? '—',
-              'First Pairing Date', _product.lastConnected ?? '—',
+              'First Pairing Date', _formatPairingDate(_product.lastConnected),
             ),
 
             // Battery | Valve State
@@ -426,6 +434,16 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
         ),
       ),
     );
+  }
+
+  String _formatPairingDate(String? raw) {
+    if (raw == null) return '—';
+    try {
+      final dt = DateTime.parse(raw);
+      return _parser.formatDate(dt);
+    } catch (_) {
+      return raw;
+    }
   }
 
   Widget _buildNameField() {

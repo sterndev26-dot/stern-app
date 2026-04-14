@@ -55,15 +55,18 @@ class BleDataParser {
   // SERIAL NUMBER
   // ─────────────────────────────────────
 
-  /// Parses serial number: bytes 1-4 reversed → hex string → int.
+  /// Parses serial number: bytes 1-4 reversed → hex string (e.g. "STBLE 11222817").
   /// Returns null for FFFFFFFF (not set).
   String? parseSerialNumber(String hexStr) {
     try {
       final parts = hexStr.trim().split(' ');
       if (parts.length < 5) return null;
-      final relevant = parts.sublist(1, 5).reversed.join();
-      if (relevant.toUpperCase() == 'FFFFFFFF') return null;
-      return int.parse(relevant, radix: 16).toString();
+      // bytes 1-4 reversed and joined as uppercase hex
+      final hex = parts.sublist(1, 5).reversed
+          .map((h) => h.toUpperCase().padLeft(2, '0'))
+          .join();
+      if (hex == 'FFFFFFFF' || hex == '00000000') return null;
+      return 'STBLE $hex';
     } catch (e) {
       dev.log('parseSerialNumber error: $e', name: 'BleDataParser');
       return null;
