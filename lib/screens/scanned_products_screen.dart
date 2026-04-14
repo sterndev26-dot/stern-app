@@ -6,7 +6,7 @@ import '../models/user.dart';
 import '../services/ble/ble_service.dart';
 import '../services/database/database_service.dart';
 import 'password_screen.dart';
-import 'product_information_screen.dart';
+import 'main_screen.dart';
 
 class ScannedProductsScreen extends StatefulWidget {
   const ScannedProductsScreen({super.key});
@@ -175,12 +175,7 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
 
     if (!mounted) return;
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ProductInformationScreen(
-          product: product,
-          isFirstEntry: true,
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => MainScreen(product: product)),
     );
   }
 
