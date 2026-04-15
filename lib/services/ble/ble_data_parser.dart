@@ -49,24 +49,25 @@ class BleDataParser {
   }
 
   String formatDate(DateTime date) =>
-      DateFormat('dd MMM, yyyy HH:mm').format(date);
+      DateFormat('dd/MM/yyyy HH:mm').format(date);
 
   // ─────────────────────────────────────
   // SERIAL NUMBER
   // ─────────────────────────────────────
 
-  /// Parses serial number: bytes 1-4 reversed → hex string (e.g. "STBLE 11222817").
-  /// Returns null for FFFFFFFF (not set).
+  /// Parses serial number from response [0x83, b0, b1, b2, b3] (ulong little-endian).
+  /// Returns decimal string, or null if not set (0 or 0xFFFFFFFF).
   String? parseSerialNumber(String hexStr) {
     try {
       final parts = hexStr.trim().split(' ');
       if (parts.length < 5) return null;
-      // bytes 1-4 reversed and joined as uppercase hex
-      final hex = parts.sublist(1, 5).reversed
-          .map((h) => h.toUpperCase().padLeft(2, '0'))
-          .join();
-      if (hex == 'FFFFFFFF' || hex == '00000000') return null;
-      return 'STBLE $hex';
+      final b0 = int.parse(parts[1], radix: 16);
+      final b1 = int.parse(parts[2], radix: 16);
+      final b2 = int.parse(parts[3], radix: 16);
+      final b3 = int.parse(parts[4], radix: 16);
+      final serial = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+      if (serial == 0 || serial == 0xFFFFFFFF) return null;
+      return serial.toString();
     } catch (e) {
       dev.log('parseSerialNumber error: $e', name: 'BleDataParser');
       return null;
@@ -99,6 +100,7 @@ class BleDataParser {
 
   /// Parses device name from hex string (information characteristic).
   /// Android getName: starts at index 1, skips 0xFF/0x00, stops at "$&" terminator.
+  /// Only accepts printable ASCII chars (0x20–0x7E).
   String? getName(String hexStr) {
     try {
       final parts = hexStr.trim().split(' ');
@@ -106,11 +108,13 @@ class BleDataParser {
       for (int i = 1; i < parts.length - 1; i++) {
         final byte = int.parse(parts[i], radix: 16);
         if (byte == 0xFF || byte == 0x00) continue;
-        final ch = String.fromCharCode(byte);
         // Check "$&" terminator (two consecutive bytes 0x24 0x26)
         final nextByte = int.parse(parts[i + 1], radix: 16);
         if (byte == 0x24 && nextByte == 0x26) break;
-        buffer.write(ch);
+        // Only accept printable ASCII
+        if (byte >= 0x20 && byte <= 0x7E) {
+          buffer.write(String.fromCharCode(byte));
+        }
       }
       final name = buffer.toString().trim();
       return name.isEmpty ? null : name;

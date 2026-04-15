@@ -4,6 +4,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../../models/stern_product.dart';
 import '../../models/stern_types.dart';
 import '../../utils/constants.dart';
+import '../../utils/debug_logger.dart';
 
 /// BLE service singleton — manages scanning, connection, read/write, notifications.
 /// Fixes applied:
@@ -40,22 +41,51 @@ class BleService {
   /// Cache of discovered services — avoids repeated discoverServices() calls
   List<BluetoothService> _cachedServices = [];
 
-  /// Watchdog: disconnects if no BLE response within [_watchdogTimeout]
-  Timer? _watchdogTimer;
-  static const _watchdogTimeout = Duration(seconds: 30);
+  /// GATT operation queue — ensures all BLE ops are serialized (Android requirement)
+  Future<dynamic> _gattQueue = Future.value(null);
+
+  /// Run [op] after all previously queued GATT operations finish.
+  Future<T> _serialized<T>(Future<T> Function() op) {
+    final completer = Completer<T>();
+    _gattQueue = _gattQueue.whenComplete(() async {
+      try {
+        completer.complete(await op());
+      } catch (e, st) {
+        completer.completeError(e, st);
+      }
+    });
+    return completer.future;
+  }
 
   // ─────────────────────────────────────────
   // SCANNING
   // ─────────────────────────────────────────
 
+  /// Emits null to signal scan end.
+  /// Emits a [SternProduct] whose [SternProduct.deviceId] == '__unauthorized__'
+  /// when Bluetooth permission has been denied by the user (iOS only).
+  /// Emits a [SternProduct] whose [SternProduct.deviceId] == '__bt_off__'
+  /// when Bluetooth is turned off on the device.
   Future<void> startScan() async {
     if (_isScanning) return;
 
-    // Check BT adapter
+    // Check BT adapter state before scanning
     final adapterState = await FlutterBluePlus.adapterState.first;
     if (adapterState != BluetoothAdapterState.on) {
       dev.log('BLE adapter not on: $adapterState', name: 'BleService');
-      _scanResultController.add(null);
+      // Signal why the scan cannot start so the UI can show a meaningful message
+      if (adapterState == BluetoothAdapterState.unauthorized) {
+        _scanResultController.add(
+          SternProduct(type: SternTypes.faucet, name: '__unauthorized__',
+              deviceId: '__unauthorized__'),
+        );
+      } else {
+        _scanResultController.add(
+          SternProduct(type: SternTypes.faucet, name: '__bt_off__',
+              deviceId: '__bt_off__'),
+        );
+      }
+      _scanResultController.add(null); // signals scan finished
       return;
     }
 
@@ -113,14 +143,26 @@ class BleService {
 
     if (type == null) return null;
 
-    final name = result.advertisementData.advName.isNotEmpty
-        ? result.advertisementData.advName
-        : type.displayName;
+    final advName = result.advertisementData.advName;
+    final name = advName.isNotEmpty ? advName : type.displayName;
+
+    // Extract serial number from advertised name.
+    // Format is typically "STBLE XXXXXXXX" or "Name XXXXXXXX" where
+    // the last token is a hex/numeric serial (4–16 chars).
+    String? serialNumber;
+    final nameParts = name.trim().split(RegExp(r'[\s_\-]+'));
+    if (nameParts.length >= 2) {
+      final last = nameParts.last;
+      if (RegExp(r'^[0-9A-Fa-f]{4,16}$').hasMatch(last)) {
+        serialNumber = last;
+      }
+    }
 
     return SternProduct(
       type: type,
       name: name,
-      macAddress: result.device.remoteId.str,
+      deviceId: result.device.remoteId.str, // MAC on Android, UUID on iOS
+      serialNumber: serialNumber,
       nearby: true,
     );
   }
@@ -129,13 +171,13 @@ class BleService {
   // CONNECTION
   // ─────────────────────────────────────────
 
-  /// Connect by MAC address — reconstructs BluetoothDevice from ID.
-  Future<bool> connectByMac(String macAddress) async {
+  /// Connect by device ID (MAC on Android, UUID on iOS).
+  Future<bool> connectById(String deviceId) async {
     try {
-      final device = BluetoothDevice.fromId(macAddress);
+      final device = BluetoothDevice.fromId(deviceId);
       return await connectToDevice(device);
     } catch (e) {
-      dev.log('connectByMac error: $e', name: 'BleService');
+      dev.log('connectById error: $e', name: 'BleService');
       _connectionStateController.add('error');
       return false;
     }
@@ -144,6 +186,7 @@ class BleService {
   Future<bool> connectToDevice(BluetoothDevice device) async {
     _connectionStateController.add('connecting');
     dev.log('Connecting to ${device.remoteId}', name: 'BleService');
+    DebugLogger.instance.ble('Connecting to ${device.remoteId}');
 
     try {
       await device.connect(timeout: const Duration(seconds: 15));
@@ -161,12 +204,13 @@ class BleService {
       // Discover and cache services once
       _cachedServices = await device.discoverServices();
       dev.log('Discovered ${_cachedServices.length} services', name: 'BleService');
+      DebugLogger.instance.ble('Connected — ${_cachedServices.length} services found');
 
-      _startWatchdog();
       _connectionStateController.add('connected');
       return true;
     } catch (e) {
       dev.log('Connection failed: $e', name: 'BleService');
+      DebugLogger.instance.error('Connection failed: $e');
       _connectionStateController.add('error');
       _onDeviceDisconnected();
       return false;
@@ -174,7 +218,6 @@ class BleService {
   }
 
   Future<void> disconnect() async {
-    _watchdogTimer?.cancel();
     try {
       await _connectedDevice?.disconnect();
     } catch (e) {
@@ -184,32 +227,15 @@ class BleService {
   }
 
   void _onDeviceDisconnected() {
+    DebugLogger.instance.ble('Disconnected');
     _connectedDevice = null;
     _cachedServices = [];
-    _watchdogTimer?.cancel();
     _cancelNotificationSubs();
     _deviceConnectionSub?.cancel();
     _deviceConnectionSub = null;
     if (!_connectionStateController.isClosed) {
       _connectionStateController.add('disconnected');
     }
-  }
-
-  // ─────────────────────────────────────────
-  // WATCHDOG
-  // ─────────────────────────────────────────
-
-  void _startWatchdog() {
-    _watchdogTimer?.cancel();
-    _watchdogTimer = Timer(_watchdogTimeout, () {
-      dev.log('Watchdog triggered — device not responding', name: 'BleService');
-      disconnect();
-    });
-  }
-
-  /// Call this every time BLE data is received to reset the watchdog
-  void resetWatchdog() {
-    if (_connectedDevice != null) _startWatchdog();
   }
 
   // ─────────────────────────────────────────
@@ -228,35 +254,57 @@ class BleService {
       }
     }
     dev.log('Characteristic not found: $charUuid', name: 'BleService');
+    DebugLogger.instance.warn('Char not found: 0x${charUuid.substring(4, 8).toUpperCase()}');
     return null;
   }
 
   Future<List<int>?> readCharacteristic(
-      String serviceUuid, String charUuid) async {
+      String serviceUuid, String charUuid) =>
+      _serialized(() => _doRead(serviceUuid, charUuid));
+
+  Future<List<int>?> _doRead(String serviceUuid, String charUuid) async {
     if (_connectedDevice == null) return null;
+    final shortId = charUuid.substring(4, 8).toUpperCase();
     try {
       final char = _findCharacteristic(serviceUuid, charUuid);
       if (char == null) return null;
       final data = await char.read();
-      resetWatchdog();
+      DebugLogger.instance.ble('READ  0x$shortId → ${data.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ')}');
       return data;
     } catch (e) {
       dev.log('Read error [$charUuid]: $e', name: 'BleService');
+      DebugLogger.instance.error('READ  0x$shortId failed: $e');
       return null;
     }
   }
 
   Future<bool> writeCharacteristic(
+      String serviceUuid, String charUuid, List<int> data) =>
+      _serialized(() => _doWrite(serviceUuid, charUuid, data));
+
+  Future<bool> _doWrite(
       String serviceUuid, String charUuid, List<int> data) async {
     if (_connectedDevice == null) return false;
+    final shortId = charUuid.substring(4, 8).toUpperCase();
     try {
       final char = _findCharacteristic(serviceUuid, charUuid);
       if (char == null) return false;
-      await char.write(data, withoutResponse: false);
-      resetWatchdog();
+      DebugLogger.instance.ble('WRITE 0x$shortId ← ${data.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ')}');
+      // Try with response first; fall back to without response if char supports it
+      try {
+        await char.write(data, withoutResponse: false);
+      } catch (_) {
+        if (char.properties.writeWithoutResponse) {
+          DebugLogger.instance.warn('WRITE 0x$shortId retrying withoutResponse');
+          await char.write(data, withoutResponse: true);
+        } else {
+          rethrow;
+        }
+      }
       return true;
     } catch (e) {
       dev.log('Write error [$charUuid]: $e', name: 'BleService');
+      DebugLogger.instance.error('WRITE 0x$shortId failed: $e');
       return false;
     }
   }
@@ -279,7 +327,6 @@ class BleService {
 
       final sub = char.lastValueStream.listen(
         (data) {
-          resetWatchdog();
           onData(data);
         },
         onError: (e) => dev.log('Notification error [$charUuid]: $e', name: 'BleService'),
@@ -291,6 +338,115 @@ class BleService {
     } catch (e) {
       dev.log('Subscribe error [$charUuid]: $e', name: 'BleService');
       return false;
+    }
+  }
+
+  /// Write a single request byte and await the matching notification response.
+  /// Per Stern BLE protocol: request byte = field_id + 0x80,
+  /// response first byte matches the request byte.
+  Future<List<int>?> requestCharacteristicField(
+    String serviceUuid,
+    String charUuid,
+    int requestByte, {
+    Duration timeout = const Duration(seconds: 4),
+  }) => _serialized(() => _doRequestField(serviceUuid, charUuid, requestByte, timeout: timeout));
+
+  Future<List<int>?> _doRequestField(
+    String serviceUuid,
+    String charUuid,
+    int requestByte, {
+    Duration timeout = const Duration(seconds: 4),
+  }) async {
+    if (_connectedDevice == null) return null;
+    final shortId = charUuid.substring(4, 8).toUpperCase();
+    final reqHex = requestByte.toRadixString(16).padLeft(2, '0').toUpperCase();
+    try {
+      final char = _findCharacteristic(serviceUuid, charUuid);
+      if (char == null) return null;
+
+      DebugLogger.instance.ble('REQ   0x$shortId ← [$reqHex]');
+
+      // Write with short timeout — if device doesn't ACK we still try reading
+      try {
+        await char.write([requestByte], withoutResponse: false, timeout: 3);
+      } catch (e) {
+        DebugLogger.instance.warn('REQ 0x$shortId write timeout — reading anyway');
+      }
+
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      final data = await char.read();
+      DebugLogger.instance.ble('READ  0x$shortId → ${data.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ')}');
+
+      if (data.isNotEmpty && data[0] == requestByte) {
+        return data;
+      }
+      DebugLogger.instance.warn('REQ 0x$shortId mismatch: want [$reqHex] got [${data.isNotEmpty ? data[0].toRadixString(16).toUpperCase() : "empty"}]');
+      return null;
+    } catch (e) {
+      dev.log('requestCharacteristicField [0x$reqHex] error: $e', name: 'BleService');
+      DebugLogger.instance.error('REQ 0x$shortId [$reqHex] error: $e');
+      return null;
+    }
+  }
+
+  /// Write arbitrary data to a notify characteristic and wait for the
+  /// notification response. Temporarily enables notifications, writes the
+  /// request, awaits the first arriving notification, then cleans up.
+  ///
+  /// Used for the Stern 0x1301 event-read protocol:
+  ///   write [0x81, type, handleLo, handleHi] → response notification
+  Future<List<int>?> writeAndWaitNotify(
+    String serviceUuid,
+    String charUuid,
+    List<int> writeData, {
+    Duration timeout = const Duration(seconds: 4),
+  }) =>
+      _serialized(() => _doWriteAndWaitNotify(serviceUuid, charUuid, writeData,
+          timeout: timeout));
+
+  Future<List<int>?> _doWriteAndWaitNotify(
+    String serviceUuid,
+    String charUuid,
+    List<int> writeData, {
+    required Duration timeout,
+  }) async {
+    if (_connectedDevice == null) return null;
+    final shortId = charUuid.substring(4, 8).toUpperCase();
+    try {
+      final char = _findCharacteristic(serviceUuid, charUuid);
+      if (char == null) return null;
+
+      // Enable notifications before writing so we don't miss the response
+      await char.setNotifyValue(true);
+
+      final completer = Completer<List<int>?>();
+      final sub = char.onValueReceived.listen((data) {
+        if (!completer.isCompleted) completer.complete(List<int>.from(data));
+      });
+
+      DebugLogger.instance.ble(
+          'WRITE 0x$shortId ← ${writeData.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ')}');
+      await char.write(writeData, withoutResponse: false, timeout: 3);
+
+      List<int>? result;
+      try {
+        result = await completer.future.timeout(timeout);
+      } on TimeoutException {
+        DebugLogger.instance.warn('0x$shortId notify timeout');
+        result = null;
+      }
+      await sub.cancel();
+
+      if (result != null) {
+        DebugLogger.instance.ble(
+            'NTFY  0x$shortId → ${result.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ')}');
+      }
+      return result;
+    } catch (e) {
+      dev.log('writeAndWaitNotify error [$charUuid]: $e', name: 'BleService');
+      DebugLogger.instance.error('writeAndWaitNotify 0x$shortId error: $e');
+      return null;
     }
   }
 
@@ -320,7 +476,6 @@ class BleService {
   // ─────────────────────────────────────────
 
   void dispose() {
-    _watchdogTimer?.cancel();
     stopScan();
     _cancelNotificationSubs();
     _deviceConnectionSub?.cancel();

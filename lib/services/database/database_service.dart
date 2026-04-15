@@ -63,12 +63,12 @@ class DatabaseService {
     return maps.map((m) => SternProduct.fromMap(m)).toList();
   }
 
-  Future<SternProduct?> getProductByMac(String macAddress) async {
+  Future<SternProduct?> getProductByDeviceId(String deviceId) async {
     final db = await database;
     final maps = await db.query(
       'stern_product',
       where: 'mac_address = ?',
-      whereArgs: [macAddress],
+      whereArgs: [deviceId],
       limit: 1,
     );
     if (maps.isEmpty) return null;
@@ -81,16 +81,16 @@ class DatabaseService {
       'stern_product',
       product.toMap(),
       where: 'mac_address = ?',
-      whereArgs: [product.macAddress],
+      whereArgs: [product.deviceId],
     );
   }
 
-  Future<int> deleteByMacAddress(String macAddress) async {
+  Future<int> deleteByDeviceId(String deviceId) async {
     final db = await database;
     return db.delete(
       'stern_product',
       where: 'mac_address = ?',
-      whereArgs: [macAddress],
+      whereArgs: [deviceId],
     );
   }
 

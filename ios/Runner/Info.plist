@@ -29,21 +29,15 @@
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
 
-	<!-- Bluetooth Permissions (required by Apple) -->
+	<!-- Bluetooth — required by flutter_blue_plus on iOS 13+ -->
+	<!-- NSBluetoothAlwaysUsageDescription: shown in iOS Settings and on first BT use -->
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Stern App uses Bluetooth to connect and control Stern hygiene products such as faucets, toilets and dispensers.</string>
+	<!-- NSBluetoothPeripheralUsageDescription: required for iOS 12 and below (kept for backward compat) -->
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Stern App uses Bluetooth to connect and control Stern hygiene products such as faucets, toilets and dispensers.</string>
 
-	<!-- Location required for BLE scanning on iOS 13+ -->
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Location access is required to scan for nearby Stern Bluetooth devices.</string>
-
-	<!-- Local Network required for BLE discovery on iOS 14+ -->
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Stern App scans for nearby Stern hygiene products on the local network.</string>
-
-	<!-- Orientation: Portrait only (matching Android source) -->
+	<!-- Orientation: Portrait only -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

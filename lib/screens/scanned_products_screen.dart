@@ -33,6 +33,8 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
   final Set<SternTypes> _activeTypeFilters = {};
   bool _showTypeFilter = false;
   StreamSubscription<SternProduct?>? _scanSub;
+  // null = no error, '__unauthorized__' = BT permission denied, '__bt_off__' = BT is off
+  String? _bleStateError;
 
   @override
   void initState() {
@@ -69,15 +71,27 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
     _scanSub = _bleService.scanResults.listen((product) {
       if (!mounted) return;
       if (product == null) {
-        if (mounted) setState(() => _isScanning = false);
+        setState(() => _isScanning = false);
         return;
       }
-      final exists = _scannedProducts.any((p) => p.macAddress == product.macAddress);
-      if (!exists) {
-        product.isPreviouslyConnected =
-            _dbProducts.any((p) => p.macAddress == product.macAddress);
-        if (mounted) setState(() => _scannedProducts.add(product));
+      // Sentinel values emitted by BleService when adapter is not ready
+      if (product.deviceId == '__unauthorized__') {
+        setState(() => _bleStateError = '__unauthorized__');
+        return;
       }
+      if (product.deviceId == '__bt_off__') {
+        setState(() => _bleStateError = '__bt_off__');
+        return;
+      }
+      setState(() {
+        _bleStateError = null;
+        final exists = _scannedProducts.any((p) => p.deviceId == product.deviceId);
+        if (!exists) {
+          product.isPreviouslyConnected =
+              _dbProducts.any((p) => p.deviceId == product.deviceId);
+          _scannedProducts.add(product);
+        }
+      });
     });
 
     await _bleService.startScan();
@@ -91,13 +105,13 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
       case _Tab.configured:
         // Show DB products, mark which ones are currently nearby
         source = _dbProducts.map((p) {
-          p.nearby = _scannedProducts.any((s) => s.macAddress == p.macAddress);
+          p.nearby = _scannedProducts.any((s) => s.deviceId == p.deviceId);
           return p;
         }).toList();
       case _Tab.unconfigured:
         // Show scanned products NOT in DB
         source = _scannedProducts
-            .where((p) => !_dbProducts.any((d) => d.macAddress == p.macAddress))
+            .where((p) => !_dbProducts.any((d) => d.deviceId == p.deviceId))
             .toList();
     }
 
@@ -115,17 +129,17 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
   }
 
   Future<void> _deleteProduct(SternProduct product) async {
-    if (product.macAddress != null) {
-      await _db.deleteByMacAddress(product.macAddress!);
+    if (product.deviceId != null) {
+      await _db.deleteByDeviceId(product.deviceId!);
     }
     setState(() {
-      _dbProducts.removeWhere((p) => p.macAddress == product.macAddress);
-      _scannedProducts.removeWhere((p) => p.macAddress == product.macAddress);
+      _dbProducts.removeWhere((p) => p.deviceId == product.deviceId);
+      _scannedProducts.removeWhere((p) => p.deviceId == product.deviceId);
     });
   }
 
   Future<void> _onPairTapped(SternProduct product) async {
-    if (product.macAddress == null) return;
+    if (product.deviceId == null) return;
     await _bleService.stopScan();
 
     if (!mounted) return;
@@ -143,7 +157,7 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
       ),
     );
 
-    final connected = await _bleService.connectByMac(product.macAddress!);
+    final connected = await _bleService.connectById(product.deviceId!);
 
     if (!mounted) return;
     Navigator.of(context).pop();
@@ -155,11 +169,12 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
       return;
     }
 
+
     final now = DateTime.now().toString();
     product.lastConnected = now;
     product.isPreviouslyConnected = true;
 
-    final existing = await _db.getProductByMac(product.macAddress!);
+    final existing = await _db.getProductByDeviceId(product.deviceId!);
     if (existing != null) {
       existing.lastConnected = now;
       existing.nearby = true;
@@ -167,7 +182,7 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
     } else {
       await _db.insertProduct(product);
       setState(() {
-        if (!_dbProducts.any((p) => p.macAddress == product.macAddress)) {
+        if (!_dbProducts.any((p) => p.deviceId == product.deviceId)) {
           _dbProducts.add(product);
         }
       });
@@ -396,29 +411,31 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
               child: Center(
                 child: _isScanning
                     ? const CircularProgressIndicator(color: _appTeal)
-                    : Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.bluetooth_searching,
-                              size: 72, color: Colors.grey[400]),
-                          const SizedBox(height: 16),
-                          Text(
-                            _tab == _Tab.configured
-                                ? 'No configured products'
-                                : 'No products found in proximity',
-                            style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500),
+                    : _bleStateError != null
+                        ? _buildBleErrorState(_bleStateError!)
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.bluetooth_searching,
+                                  size: 72, color: Colors.grey[400]),
+                              const SizedBox(height: 16),
+                              Text(
+                                _tab == _Tab.configured
+                                    ? 'No configured products'
+                                    : 'No products found in proximity',
+                                style: TextStyle(
+                                    color: Colors.grey[600],
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Pull down to scan',
+                                style: TextStyle(
+                                    color: Colors.grey[400], fontSize: 13),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Pull down to scan',
-                            style: TextStyle(
-                                color: Colors.grey[400], fontSize: 13),
-                          ),
-                        ],
-                      ),
               ),
             ),
           ],
@@ -436,7 +453,7 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
         itemBuilder: (ctx, i) {
           final product = products[i];
           return Dismissible(
-            key: Key(product.macAddress ?? '$i'),
+            key: Key(product.deviceId ?? '$i'),
             direction: DismissDirection.endToStart,
             background: Container(
               color: Colors.red,
@@ -454,6 +471,52 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
       ),
     );
   }
+
+  Widget _buildBleErrorState(String error) {
+    final isUnauthorized = error == '__unauthorized__';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isUnauthorized ? Icons.bluetooth_disabled : Icons.bluetooth_disabled,
+            size: 72,
+            color: Colors.orange[300],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            isUnauthorized
+                ? 'Bluetooth Permission Denied'
+                : 'Bluetooth is Off',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: Colors.grey[700],
+                fontSize: 16,
+                fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            isUnauthorized
+                ? 'Please enable Bluetooth access for Stern App in Settings → Privacy & Security → Bluetooth.'
+                : 'Please turn on Bluetooth to scan for nearby Stern products.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey[500], fontSize: 13, height: 1.5),
+          ),
+          const SizedBox(height: 20),
+          OutlinedButton.icon(
+            onPressed: _startScan,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Try Again'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _appTeal,
+              side: const BorderSide(color: _appTeal),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ProductTile extends StatelessWidget {
@@ -466,9 +529,7 @@ class _ProductTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final snDisplay = product.serialNumber != null
         ? 'S/N:  ${product.serialNumber}'
-        : product.macAddress != null
-            ? 'S/N:  ${product.macAddress}'
-            : '';
+        : '';
 
     final lastUpdated = product.lastConnected != null
         ? 'Last updated:  ${product.lastConnected}'

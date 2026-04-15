@@ -21,9 +21,12 @@ class PermissionService {
   }
 
   Future<bool> _requestIosPermissions() async {
-    final bluetooth = await Permission.bluetooth.request();
-    dev.log('iOS bluetooth: $bluetooth', name: 'PermissionService');
-    return bluetooth.isGranted;
+    // On iOS, Core Bluetooth (used by flutter_blue_plus) handles Bluetooth
+    // authorization natively — the system permission dialog appears automatically
+    // when scanning starts. permission_handler is not needed here and would
+    // incorrectly return 'denied' before the system dialog is shown.
+    dev.log('iOS: BT permission delegated to Core Bluetooth', name: 'PermissionService');
+    return true;
   }
 
   Future<bool> _requestAndroidPermissions() async {
@@ -58,7 +61,8 @@ class PermissionService {
   /// Check without requesting
   Future<bool> areBlePermissionsGranted() async {
     if (Platform.isIOS) {
-      return (await Permission.bluetooth.status).isGranted;
+      // On iOS, permission is managed by Core Bluetooth — always return true here.
+      return true;
     }
     final scan = await Permission.bluetoothScan.status;
     final connect = await Permission.bluetoothConnect.status;

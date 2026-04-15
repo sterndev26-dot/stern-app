@@ -4,7 +4,9 @@ class SternProduct {
   int? id;
   SternTypes type;
   String name;
-  String? macAddress;
+  /// On Android this is a MAC address; on iOS this is a Core Bluetooth UUID.
+  /// Stored in DB column 'mac_address' for historical reasons.
+  String? deviceId;
   String? pairingCode;
   String? lastConnected;
   String? lastUpdate;
@@ -25,7 +27,7 @@ class SternProduct {
     this.id,
     required this.type,
     required this.name,
-    this.macAddress,
+    this.deviceId,
     this.pairingCode,
     this.lastConnected,
     this.lastUpdate,
@@ -48,7 +50,7 @@ class SternProduct {
       if (id != null) 'id': id,
       'type': type.toStorageString(),
       'name': name,
-      'mac_address': macAddress,
+      'mac_address': deviceId,   // DB column kept as-is for compatibility
       'pairing_code': pairingCode,
       'last_connected': lastConnected,
       'last_updated': lastUpdate,
@@ -68,7 +70,7 @@ class SternProduct {
       id: map['id'] as int?,
       type: SternTypesExtension.fromString(map['type'] as String? ?? ''),
       name: map['name'] as String? ?? '',
-      macAddress: map['mac_address'] as String?,
+      deviceId: map['mac_address'] as String?,
       pairingCode: map['pairing_code'] as String?,
       lastConnected: map['last_connected'] as String?,
       lastUpdate: map['last_updated'] as String?,

@@ -10,6 +10,7 @@ import '../utils/constants.dart';
 import 'operate_screen.dart';
 import 'settings_screen.dart';
 import 'scanned_products_screen.dart';
+import 'debug_log_screen.dart';
 
 class MainScreen extends StatefulWidget {
   final SternProduct product;
@@ -31,7 +32,7 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _tabs = [
-      _DeviceInfoTab(product: widget.product, syncTimeOnInit: true),
+      _DeviceInfoTab(product: widget.product),
       OperateScreen(product: widget.product),
       if (_isTechnician) SettingsScreen(product: widget.product),
     ];
@@ -42,10 +43,7 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: Column(
-        children: [
-          _buildHeader(),
-          Expanded(child: _tabs[_currentIndex]),
-        ],
+        children: [_buildHeader(), Expanded(child: _tabs[_currentIndex])],
       ),
       bottomNavigationBar: _buildBottomNav(),
     );
@@ -70,8 +68,11 @@ class _MainScreenState extends State<MainScreen> {
                     alignment: Alignment.centerLeft,
                     child: GestureDetector(
                       onTap: _disconnectAndGoBack,
-                      child: const Icon(Icons.arrow_back,
-                          color: Colors.white, size: 26),
+                      child: const Icon(
+                        Icons.arrow_back,
+                        color: Colors.white,
+                        size: 26,
+                      ),
                     ),
                   ),
                   // Product type name centered
@@ -86,23 +87,57 @@ class _MainScreenState extends State<MainScreen> {
                 ],
               ),
             ),
-            // Row 2: help icon bottom-left
+            // Row 2: help icon (left) + debug icon (right)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
-              child: GestureDetector(
-                onTap: () => showDialog(
-                    context: context,
-                    builder: (_) => const _HelpDialog()),
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.5),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  GestureDetector(
+                    onTap:
+                        () => showDialog(
+                          context: context,
+                          builder: (_) => const _HelpDialog(),
+                        ),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                      child: const Icon(
+                        Icons.question_mark,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
                   ),
-                  child: const Icon(Icons.question_mark,
-                      color: Colors.white, size: 18),
-                ),
+                  GestureDetector(
+                    onTap:
+                        () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const DebugLogScreen(),
+                          ),
+                        ),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.6),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.bug_report_outlined,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -157,8 +192,7 @@ class _MainScreenState extends State<MainScreen> {
 
 class _DeviceInfoTab extends StatefulWidget {
   final SternProduct product;
-  final bool syncTimeOnInit;
-  const _DeviceInfoTab({required this.product, this.syncTimeOnInit = false});
+  const _DeviceInfoTab({required this.product});
 
   @override
   State<_DeviceInfoTab> createState() => _DeviceInfoTabState();
@@ -179,6 +213,7 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
   bool _isLoading = true;
   bool _isEditingName = false;
   String? _nameError;
+  String? _mfgDate; // production date from info characteristic
 
   @override
   bool get wantKeepAlive => true;
@@ -188,9 +223,7 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
     super.initState();
     _product = widget.product;
     _nameController.text = _product.name;
-    _loadDeviceInfo().then((_) {
-      if (mounted && widget.syncTimeOnInit) _showDateTimeSyncDialog();
-    });
+    _loadDeviceInfo();
   }
 
   @override
@@ -200,109 +233,66 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
     super.dispose();
   }
 
-  // ── Date/Time Sync ────────────────────────────────
-
-  void _showDateTimeSyncDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: const Row(
-          children: [
-            Icon(Icons.access_time, color: _appTeal),
-            SizedBox(width: 8),
-            Text('Sync Date & Time',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: const Text(
-            'Update the device clock to the current date and time?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Skip', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _syncDateTime();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _appTeal,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('Update'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _syncDateTime() async {
-    final now = DateTime.now();
-    final packet = [
-      now.second & 0xFF,
-      now.minute & 0xFF,
-      now.hour & 0xFF,
-      now.day & 0xFF,
-      now.month & 0xFF,
-      (now.year - 2000) & 0xFF,
-    ];
-
-    final ok = await _ble.writeCharacteristic(
-      BleGattAttributes.uuidCalenderService,
-      BleGattAttributes.uuidCalenderCharacteristicReadWrite,
-      packet,
-    );
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            ok ? 'Date & time updated' : 'Failed to update date & time'),
-        backgroundColor: ok ? _appTeal : Colors.red,
-        duration: const Duration(seconds: 2),
-      ));
-    }
-
-    if (ok && mounted) await _loadDeviceInfo();
-  }
-
   // ── BLE Load ──────────────────────────────────────
 
   Future<void> _loadDeviceInfo() async {
     if (mounted) setState(() => _isLoading = true);
 
-    // Information characteristic: name, serial, SW version, battery
-    final infoData = await _ble.readCharacteristic(
+    // Request each field from 0x1303 using Stern BLE protocol:
+    // write [field_id + 0x80] → device responds with notification [field_id+0x80, ...data]
+
+    // 0x85 = SW version [0x85, patch, minor, major]
+    final swData = await _ble.requestCharacteristicField(
       BleGattAttributes.uuidDataInformationService,
       BleGattAttributes.uuidInformationRead,
+      0x85,
     );
-
-    if (infoData != null && mounted) {
-      final hexStr = _parser.bytesToHexString(infoData);
-      final deviceName = _parser.getName(hexStr);
-      final serial = _parser.parseSerialNumber(hexStr);
-      final sw = _parser.parseSoftwareVersion(hexStr);
-      final battery = _parser.parseBatteryVoltage(infoData);
-      final mfgDate = _parser.getDate(hexStr);
-
-      setState(() {
-        if (deviceName != null && deviceName.isNotEmpty) {
-          _product.name = deviceName;
-          _nameController.text = deviceName;
-        }
-        if (serial != null) _product.serialNumber = serial;
-        if (sw != null) _product.swVersion = sw;
-        if (battery != null) _product.batteryVoltage = battery;
-        if (mfgDate != null) _product.lastUpdate = _parser.formatDate(mfgDate);
-      });
-
-      await _db.updateProduct(_product);
+    if (swData != null && mounted) {
+      final sw = _parser.parseSoftwareVersion(_parser.bytesToHexString(swData));
+      if (sw != null) setState(() => _product.swVersion = sw);
     }
+
+    // 0x81 = device name [0x81, ...ascii, 0x24, 0x26]
+    final nameData = await _ble.requestCharacteristicField(
+      BleGattAttributes.uuidDataInformationService,
+      BleGattAttributes.uuidInformationRead,
+      0x81,
+    );
+    if (nameData != null && mounted) {
+      final name = _parser.getName(_parser.bytesToHexString(nameData));
+      if (name != null && name.isNotEmpty) {
+        setState(() {
+          _product.name = name;
+          _nameController.text = name;
+        });
+      }
+    }
+
+    // 0x83 = serial number [0x83, b0, b1, b2, b3] (ulong little-endian)
+    final serialData = await _ble.requestCharacteristicField(
+      BleGattAttributes.uuidDataInformationService,
+      BleGattAttributes.uuidInformationRead,
+      0x83,
+    );
+    if (serialData != null && mounted) {
+      final serial = _parser.parseSerialNumber(
+        _parser.bytesToHexString(serialData),
+      );
+      if (serial != null) setState(() => _product.serialNumber = serial);
+    }
+
+    // 0x84 = production date [0x84, sec, min, hr, day, month, year]
+    final prodDateData = await _ble.requestCharacteristicField(
+      BleGattAttributes.uuidDataInformationService,
+      BleGattAttributes.uuidInformationRead,
+      0x84,
+    );
+    if (prodDateData != null && mounted) {
+      final dt = _parser.getDate(_parser.bytesToHexString(prodDateData));
+      if (dt != null) setState(() => _mfgDate = _parser.formatDate(dt));
+    }
+
+    if (mounted) await _db.updateProduct(_product);
 
     // Calendar: current device date/time
     final calData = await _ble.readCharacteristic(
@@ -315,16 +305,6 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
       if (dt != null) {
         setState(() => _product.lastUpdate = _parser.formatDate(dt));
       }
-    }
-
-    // Valve state
-    final operateData = await _ble.readCharacteristic(
-      BleGattAttributes.uuidDataOperateService,
-      BleGattAttributes.uuidOperateReadWrite,
-    );
-    if (operateData != null && mounted) {
-      setState(() =>
-          _product.valveState = _parser.parseValveState(operateData));
     }
 
     if (mounted) setState(() => _isLoading = false);
@@ -380,11 +360,13 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
     await _db.updateProduct(_product);
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Name updated'),
-        backgroundColor: _appTeal,
-        duration: Duration(seconds: 2),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Name updated'),
+          backgroundColor: _appTeal,
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -412,8 +394,10 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
 
             // Product Type | Serial Number
             _twoColRow(
-              'Product Type', _product.type.displayName,
-              'Serial Number', _product.serialNumber ?? '—',
+              'Product Type',
+              _product.type.displayName,
+              'Serial Number',
+              _product.serialNumber ?? '—',
             ),
 
             // BLE SW Version (full width with update date on right)
@@ -421,14 +405,10 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
 
             // Date | First Pairing Date
             _twoColRow(
-              'Date', _product.lastUpdate ?? '—',
-              'First Pairing Date', _formatPairingDate(_product.lastConnected),
-            ),
-
-            // Battery | Valve State
-            _twoColRow(
-              'Battery', _product.batteryVoltage ?? '—',
-              'Valve State', _product.valveState ?? '—',
+              'Date',
+              _product.lastUpdate ?? '—',
+              'First Pairing Date',
+              _formatPairingDate(_product.lastConnected),
             ),
           ],
         ),
@@ -454,31 +434,39 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
         const Text(
           'Product Name',
           style: TextStyle(
-              fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
         ),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
-              child: _isEditingName
-                  ? TextField(
-                      controller: _nameController,
-                      focusNode: _nameFocus,
-                      maxLength: _maxNameLength,
-                      decoration: InputDecoration(
-                        errorText: _nameError,
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
+              child:
+                  _isEditingName
+                      ? TextField(
+                        controller: _nameController,
+                        focusNode: _nameFocus,
+                        maxLength: _maxNameLength,
+                        decoration: InputDecoration(
+                          errorText: _nameError,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                        style: const TextStyle(fontSize: 16),
+                        onSubmitted: (_) => _submitName(),
+                      )
+                      : Text(
+                        _nameController.text,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.black87,
+                        ),
                       ),
-                      style: const TextStyle(fontSize: 16),
-                      onSubmitted: (_) => _submitName(),
-                    )
-                  : Text(
-                      _nameController.text,
-                      style: const TextStyle(
-                          fontSize: 16, color: Colors.black87),
-                    ),
             ),
             const SizedBox(width: 12),
             GestureDetector(
@@ -498,8 +486,7 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
     );
   }
 
-  Widget _twoColRow(
-      String label1, String val1, String label2, String val2) {
+  Widget _twoColRow(String label1, String val1, String label2, String val2) {
     return Column(
       children: [
         const SizedBox(height: 12),
@@ -527,9 +514,10 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
           child: Text(
             'BLE SW Version',
             style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87),
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
           ),
         ),
         const SizedBox(height: 4),
@@ -542,7 +530,7 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
               ),
             ),
             Text(
-              _product.lastUpdate ?? '—',
+              _mfgDate ?? '—',
               style: const TextStyle(fontSize: 14, color: Colors.black54),
             ),
           ],
@@ -557,14 +545,19 @@ class _DeviceInfoTabState extends State<_DeviceInfoTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(value,
-            style: const TextStyle(fontSize: 15, color: Colors.black87)),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 15, color: Colors.black87),
+        ),
       ],
     );
   }
@@ -589,23 +582,27 @@ class _HelpDialog extends StatelessWidget {
               color: Color(0xFF0097A7),
               borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
             ),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Row(
               children: [
                 const Expanded(
                   child: Center(
-                    child: Text('Information',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold)),
+                    child: Text(
+                      'Information',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
-                  child: const Text('Close',
-                      style: TextStyle(color: Colors.white, fontSize: 15)),
+                  child: const Text(
+                    'Close',
+                    style: TextStyle(color: Colors.white, fontSize: 15),
+                  ),
                 ),
               ],
             ),
@@ -625,67 +622,104 @@ class _HelpDialog extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _bullet('Manual Activation:',
-            ' Allows the user to activate unit manually for a set duration of time, as specified by the user.'),
-        _bullet('Hygiene Flush Activation:',
-            ' Allows user to set a flush that activates automatically after a defined period of non-use, as specified by the user.'),
-        _bullet('Schedule Hygiene Flush:',
-            ' Allows user to schedule a flush at a specific time on a given day or date for a set duration, as specified by the user.'),
-        _bullet('Manual Standby Activation:',
-            ' User can disable the sensor for a set duration of time, as specified by the user.'),
-        _bullet('Schedule Standby:',
-            ' User can schedule a standby at a specified time on a given day or date for a set duration, as specified by the user.'),
-        _bullet('Detection Range:',
-            ' This is the range within which the user can be detected in front of the sensor.'),
-        _bullet('Delay In:',
-            ' This is the amount of time that the user needs to be in the sensor detection range before they are recognized by the sensor, preventing premature activation.'),
-        _bullet('Delay Out:',
-            ' The amount of time that needs to pass after the user leaves the sensor detection range, before the sensor recognizes that the user has left, preventing premature activations.'),
-        _bullet('Security Time:',
-            ' This is the maximum amount of time that a sensor will allow the valve to remain open, preventing continuous flow.'),
+        _bullet(
+          'Manual Activation:',
+          ' Allows the user to activate unit manually for a set duration of time, as specified by the user.',
+        ),
+        _bullet(
+          'Hygiene Flush Activation:',
+          ' Allows user to set a flush that activates automatically after a defined period of non-use, as specified by the user.',
+        ),
+        _bullet(
+          'Schedule Hygiene Flush:',
+          ' Allows user to schedule a flush at a specific time on a given day or date for a set duration, as specified by the user.',
+        ),
+        _bullet(
+          'Manual Standby Activation:',
+          ' User can disable the sensor for a set duration of time, as specified by the user.',
+        ),
+        _bullet(
+          'Schedule Standby:',
+          ' User can schedule a standby at a specified time on a given day or date for a set duration, as specified by the user.',
+        ),
+        _bullet(
+          'Detection Range:',
+          ' This is the range within which the user can be detected in front of the sensor.',
+        ),
+        _bullet(
+          'Delay In:',
+          ' This is the amount of time that the user needs to be in the sensor detection range before they are recognized by the sensor, preventing premature activation.',
+        ),
+        _bullet(
+          'Delay Out:',
+          ' The amount of time that needs to pass after the user leaves the sensor detection range, before the sensor recognizes that the user has left, preventing premature activations.',
+        ),
+        _bullet(
+          'Security Time:',
+          ' This is the maximum amount of time that a sensor will allow the valve to remain open, preventing continuous flow.',
+        ),
         _sectionTitle('Soap Dispenser'),
-        _bullet('Soap Dosage:',
-            ' This is the amount of soap dispensed per activation, as specified by the user.'),
+        _bullet(
+          'Soap Dosage:',
+          ' This is the amount of soap dispensed per activation, as specified by the user.',
+        ),
         _sectionTitle('Foam Dispenser'),
-        _bullet('Air Quantity:',
-            ' This is the amount of air compressed into the soap to create foam, as specified by the user.'),
-        _bullet('Soap Quantity:',
-            ' This is the amount of soap compressed with air to produce foam, as specified by the user.'),
+        _bullet(
+          'Air Quantity:',
+          ' This is the amount of air compressed into the soap to create foam, as specified by the user.',
+        ),
+        _bullet(
+          'Soap Quantity:',
+          ' This is the amount of soap compressed with air to produce foam, as specified by the user.',
+        ),
         _sectionTitle('Flush Valve'),
-        _bullet('Flush Time:',
-            ' This is the amount of time that the valve remains open for a full flush, as specified by the user.'),
-        _bullet('Short Flush Time:',
-            ' This is the amount of time that the valve stays open for a half flush, as specified by the user.'),
+        _bullet(
+          'Flush Time:',
+          ' This is the amount of time that the valve remains open for a full flush, as specified by the user.',
+        ),
+        _bullet(
+          'Short Flush Time:',
+          ' This is the amount of time that the valve stays open for a half flush, as specified by the user.',
+        ),
         _sectionTitle('Wave Sensor'),
-        _bullet('Flow time:',
-            ' This is the amount of time that the sensor will keep the valve open, as specified by the user.'),
+        _bullet(
+          'Flow time:',
+          ' This is the amount of time that the sensor will keep the valve open, as specified by the user.',
+        ),
       ],
     );
   }
 
   Widget _sectionTitle(String title) => Padding(
-        padding: const EdgeInsets.only(top: 12, bottom: 6),
-        child: Text(title,
-            style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                decoration: TextDecoration.underline)),
-      );
+    padding: const EdgeInsets.only(top: 12, bottom: 6),
+    child: Text(
+      title,
+      style: const TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.bold,
+        decoration: TextDecoration.underline,
+      ),
+    ),
+  );
 
   Widget _bullet(String bold, String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: RichText(
-          text: TextSpan(
-            style: const TextStyle(
-                fontSize: 14, color: Colors.black87, height: 1.4),
-            children: [
-              const TextSpan(text: '• '),
-              TextSpan(
-                  text: bold,
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              TextSpan(text: text),
-            ],
-          ),
+    padding: const EdgeInsets.only(bottom: 10),
+    child: RichText(
+      text: TextSpan(
+        style: const TextStyle(
+          fontSize: 14,
+          color: Colors.black87,
+          height: 1.4,
         ),
-      );
+        children: [
+          const TextSpan(text: '• '),
+          TextSpan(
+            text: bold,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          TextSpan(text: text),
+        ],
+      ),
+    ),
+  );
 }
