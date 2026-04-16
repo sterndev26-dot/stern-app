@@ -147,8 +147,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (_cfg.detectionRange) {
         // Response: [echo, currentSteps, maxSteps]
-        final d = await _ble.requestCharacteristicField(
-            svc, BleGattAttributes.uuidSettingsDetectionRange, 0x81);
+        final d = await _ble.writeAndWaitNotify(
+            svc, BleGattAttributes.uuidSettingsDetectionRange, [0x81],
+            timeout: const Duration(seconds: 3));
         if (d != null && d.length >= 2) {
           setState(() {
             _detectionRange = d[1].toDouble().clamp(1, 100);
@@ -181,7 +182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _shortFlush = v;
               if (mx > 0) _shortFlushMax = mx;
               if (mn >= 0) _shortFlushMin = mn;
-            }));
+            }), isFlush: true);
       }
 
       if (_cfg.longFlush) {
@@ -190,7 +191,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _longFlush = v;
               if (mx > 0) _longFlushMax = mx;
               if (mn >= 0) _longFlushMin = mn;
-            }));
+            }), isFlush: true);
       }
 
       if (_cfg.securityTime) {
@@ -203,8 +204,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
 
       if (_cfg.soapDosage) {
-        final d = await _ble.requestCharacteristicField(
-            svc, BleGattAttributes.uuidSettingsSoapDosage, 0x81);
+        final d = await _ble.writeAndWaitNotify(
+            svc, BleGattAttributes.uuidSettingsSoapDosage, [0x81],
+            timeout: const Duration(seconds: 3));
         if (d != null && d.length >= 2) {
           setState(() => _soapDosage = d[1].clamp(1, 4));
         }
@@ -212,8 +214,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (_cfg.airMotor) {
         // Response: [echo, soapMotor, airMotor]
-        final d = await _ble.requestCharacteristicField(
-            svc, BleGattAttributes.uuidSettingsFoamSoap, 0x81);
+        final d = await _ble.writeAndWaitNotify(
+            svc, BleGattAttributes.uuidSettingsFoamSoap, [0x81],
+            timeout: const Duration(seconds: 3));
         if (d != null && d.length >= 3) {
           setState(() => _airMotor = d[2].toDouble().clamp(0, 9));
         }
@@ -227,15 +230,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Request a time characteristic (write 0x81, read LE32 millis).
   /// Response: [echo, b1..b4=currentMs, b5..b8=maxMs, b9..b12=minMs, ...]
-  /// All three come from the device — no hardcoded values.
+  ///
+  /// [isFlush] — true for SHORT_FLUSH / LONG_FLUSH only.
+  ///   Per Android SettingsScreenBleDataParser: for flush characteristics the
+  ///   device returns max/min in centiseconds (÷100), while current value and
+  ///   all delay/security values are in milliseconds (÷1000).
   Future<void> _readTime(String svc, String char,
-      void Function(double value, double maxValue, double minValue) onParsed) async {
+      void Function(double value, double maxValue, double minValue) onParsed,
+      {bool isFlush = false}) async {
     try {
-      final data = await _ble.requestCharacteristicField(svc, char, 0x81);
+      final data = await _ble.writeAndWaitNotify(svc, char, [0x81],
+          timeout: const Duration(seconds: 3));
       if (data == null || data.length < 5) return;
       final currentSec = _le32(data, 1) / 1000.0;
-      final maxSec = data.length >= 9  ? _le32(data, 5) / 1000.0 : 0.0;
-      final minSec = data.length >= 13 ? _le32(data, 9) / 1000.0 : 0.0;
+      final maxDivisor = isFlush ? 100.0 : 1000.0;
+      final minDivisor = isFlush ? 100.0 : 1000.0;
+      final maxSec = data.length >= 9  ? _le32(data, 5) / maxDivisor : 0.0;
+      final minSec = data.length >= 13 ? _le32(data, 9) / minDivisor : 0.0;
       onParsed(currentSec, maxSec, minSec);
     } catch (e) {
       dev.log('_readTime [$char]: $e');
