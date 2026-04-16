@@ -182,7 +182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _shortFlush = v;
               if (mx > 0) _shortFlushMax = mx;
               if (mn >= 0) _shortFlushMin = mn;
-            }), isFlush: true);
+            }));
       }
 
       if (_cfg.longFlush) {
@@ -191,7 +191,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _longFlush = v;
               if (mx > 0) _longFlushMax = mx;
               if (mn >= 0) _longFlushMin = mn;
-            }), isFlush: true);
+            }));
       }
 
       if (_cfg.securityTime) {
@@ -230,23 +230,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Request a time characteristic (write 0x81, read LE32 millis).
   /// Response: [echo, b1..b4=currentMs, b5..b8=maxMs, b9..b12=minMs, ...]
-  ///
-  /// [isFlush] — true for SHORT_FLUSH / LONG_FLUSH only.
-  ///   Per Android SettingsScreenBleDataParser: for flush characteristics the
-  ///   device returns max/min in centiseconds (÷100), while current value and
-  ///   all delay/security values are in milliseconds (÷1000).
+  /// All values are in milliseconds — divide by 1000 to get seconds.
   Future<void> _readTime(String svc, String char,
-      void Function(double value, double maxValue, double minValue) onParsed,
-      {bool isFlush = false}) async {
+      void Function(double value, double maxValue, double minValue) onParsed) async {
     try {
       final data = await _ble.writeAndWaitNotify(svc, char, [0x81],
           timeout: const Duration(seconds: 3));
       if (data == null || data.length < 5) return;
       final currentSec = _le32(data, 1) / 1000.0;
-      final maxDivisor = isFlush ? 100.0 : 1000.0;
-      final minDivisor = isFlush ? 100.0 : 1000.0;
-      final maxSec = data.length >= 9  ? _le32(data, 5) / maxDivisor : 0.0;
-      final minSec = data.length >= 13 ? _le32(data, 9) / minDivisor : 0.0;
+      final maxSec = data.length >= 9  ? _le32(data, 5) / 1000.0 : 0.0;
+      final minSec = data.length >= 13 ? _le32(data, 9) / 1000.0 : 0.0;
       onParsed(currentSec, maxSec, minSec);
     } catch (e) {
       dev.log('_readTime [$char]: $e');
