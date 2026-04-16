@@ -5,6 +5,65 @@ import '../models/stern_types.dart';
 import '../services/ble/ble_service.dart';
 import '../utils/constants.dart';
 
+// Which settings a product type supports.
+class _ProductSettings {
+  final bool detectionRange;
+  final bool delayIn;
+  final bool delayOut;
+  final bool shortFlush;
+  final bool longFlush;
+  final String longFlushLabel; // "Long Flush" | "Flush" | "Flash"
+  final bool securityTime;
+  final String securityTimeLabel; // "Security Time" | "Discharge"
+  final bool soapDosage; // integer 1-4
+  final bool airMotor;  // foam soap motor 0-9
+
+  const _ProductSettings({
+    this.detectionRange = false,
+    this.delayIn = false,
+    this.delayOut = false,
+    this.shortFlush = false,
+    this.longFlush = false,
+    this.longFlushLabel = 'Long Flush',
+    this.securityTime = false,
+    this.securityTimeLabel = 'Security Time',
+    this.soapDosage = false,
+    this.airMotor = false,
+  });
+
+  static _ProductSettings forType(SternTypes type) {
+    switch (type) {
+      case SternTypes.faucet:
+        return const _ProductSettings(
+          detectionRange: true, delayIn: true, delayOut: true, securityTime: true);
+      case SternTypes.shower:
+        return const _ProductSettings(
+          detectionRange: true, delayIn: true, delayOut: true, securityTime: true);
+      case SternTypes.wc:
+        return const _ProductSettings(
+          detectionRange: true, delayIn: true, delayOut: true,
+          shortFlush: true, longFlush: true);
+      case SternTypes.urinal:
+        return const _ProductSettings(
+          detectionRange: true, delayIn: true, delayOut: true,
+          longFlush: true, longFlushLabel: 'Flush');
+      case SternTypes.waveOnOff:
+        return const _ProductSettings(
+          detectionRange: true, longFlush: true, longFlushLabel: 'Flash',
+          securityTime: true);
+      case SternTypes.soapDispenser:
+        return const _ProductSettings(
+          detectionRange: true, soapDosage: true);
+      case SternTypes.foamSoapDispenser:
+        return const _ProductSettings(
+          detectionRange: true, securityTime: true,
+          securityTimeLabel: 'Discharge', airMotor: true);
+      default:
+        return const _ProductSettings(detectionRange: true);
+    }
+  }
+}
+
 class SettingsScreen extends StatefulWidget {
   final SternProduct product;
 
@@ -18,6 +77,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const _appTeal = Color(0xFF0097A7);
 
   final _ble = BleService();
+  late final _ProductSettings _cfg;
+
   bool _isBusy = false;
   bool _isLoading = true;
   bool _newPresetMode = false;
@@ -25,37 +86,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final List<String> _presets = [];
   String? _selectedPreset;
 
-  // --- Seek bar settings (seconds, float) ---
+  // --- Setting values ---
+  double _detectionRange = 5;
   double _delayIn = 1.0;
   double _delayOut = 1.0;
+  double _shortFlush = 3.0;
   double _longFlush = 5.0;
-  double _shortWash = 3.0;
   double _securityTime = 10.0;
-  double _betweenTime = 5.0;
-  double _detectionRange = 5.0;
+  int _soapDosage = 1;
+  double _airMotor = 5;
 
-  // --- Dynamic slider ranges (updated from device response) ---
+  // --- Dynamic slider maxima (updated from device response) ---
+  double _detectionRangeMax = 18;
   double _delayInMax = 30;
   double _delayOutMax = 30;
+  double _shortFlushMax = 30;
   double _longFlushMax = 60;
-  double _shortWashMax = 30;
   double _securityTimeMax = 120;
-  double _betweenTimeMax = 120;
-  double _detectionRangeMax = 18;
-
-  // --- Soap dosage (1–5) ---
-  int _soapDosage = 3;
-
-  // --- Simple control toggle ---
-  bool _simpleControlEnabled = false;
-
-  bool get _isSoapType =>
-      widget.product.type == SternTypes.soapDispenser ||
-      widget.product.type == SternTypes.foamSoapDispenser;
 
   @override
   void initState() {
     super.initState();
+    _cfg = _ProductSettings.forType(widget.product.type);
     _loadSettings();
   }
 
@@ -67,7 +119,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ─── BLE helpers ───────────────────────────────────────────────────────────
 
-  /// Parse a 4-byte little-endian int32 starting at [offset].
+  /// Parse 4-byte little-endian int32 at [offset].
   static int _le32(List<int> data, int offset) {
     if (data.length < offset + 4) return 0;
     return data[offset] |
@@ -76,17 +128,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         (data[offset + 3] << 24);
   }
 
-  /// Build the 5-byte write packet for time-based settings.
-  /// Format: [0x01, msLo, msMidLo, msMidHi, msMidHi] — value in milliseconds.
+  /// Build 5-byte write packet for time settings.
+  /// [0x01, msLo, msMidLo, msMidHi, 0x00] — value in milliseconds LE.
   static List<int> _timeBytes(double seconds) {
     final ms = (seconds * 1000).round().clamp(0, 0xFFFFFF);
-    return [
-      0x01,
-      ms & 0xFF,
-      (ms >> 8) & 0xFF,
-      (ms >> 16) & 0xFF,
-      0x00,
-    ];
+    return [0x01, ms & 0xFF, (ms >> 8) & 0xFF, (ms >> 16) & 0xFF, 0x00];
   }
 
   // ─── Load ──────────────────────────────────────────────────────────────────
@@ -96,70 +142,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       const svc = BleGattAttributes.uuidDataSettingsService;
 
-      await _readTime(svc, BleGattAttributes.uuidSettingsRemotesDelayIn,
-          (v, maxV) => setState(() {
-                _delayIn = v;
-                if (maxV > 0) _delayInMax = maxV;
-              }));
-
-      await _readTime(svc, BleGattAttributes.uuidSettingsRemotesDelayOut,
-          (v, maxV) => setState(() {
-                _delayOut = v;
-                if (maxV > 0) _delayOutMax = maxV;
-              }));
-
-      await _readTime(svc, BleGattAttributes.uuidSettingsRemotesLongFlush,
-          (v, maxV) => setState(() {
-                _longFlush = v;
-                if (maxV > 0) _longFlushMax = maxV;
-              }));
-
-      await _readTime(svc, BleGattAttributes.uuidSettingsRemotesShortWash,
-          (v, maxV) => setState(() {
-                _shortWash = v;
-                if (maxV > 0) _shortWashMax = maxV;
-              }));
-
-      await _readTime(svc, BleGattAttributes.uuidSettingsRemotesSecurityTime,
-          (v, maxV) => setState(() {
-                _securityTime = v;
-                if (maxV > 0) _securityTimeMax = maxV;
-              }));
-
-      await _readTime(svc, BleGattAttributes.uuidSettingsRemotesBetweenTime,
-          (v, maxV) => setState(() {
-                _betweenTime = v;
-                if (maxV > 0) _betweenTimeMax = maxV;
-              }));
-
-      // Detection range: [echo, currentSteps, maxSteps, ...]
-      final rangeData = await _ble.requestCharacteristicField(
-          svc, BleGattAttributes.uuidSettingsDetectionRange, 0x81);
-      if (rangeData != null && rangeData.length >= 2) {
-        setState(() {
-          _detectionRange = rangeData[1].toDouble().clamp(1, 100);
-          if (rangeData.length >= 3 && rangeData[2] > 0) {
-            _detectionRangeMax = rangeData[2].toDouble();
-          }
-        });
+      if (_cfg.detectionRange) {
+        // Response: [echo, currentSteps, maxSteps]
+        final d = await _ble.requestCharacteristicField(
+            svc, BleGattAttributes.uuidSettingsDetectionRange, 0x81);
+        if (d != null && d.length >= 2) {
+          setState(() {
+            _detectionRange = d[1].toDouble().clamp(1, 100);
+            if (d.length >= 3 && d[2] > 0) _detectionRangeMax = d[2].toDouble();
+          });
+        }
       }
 
-      // Simple controls: [echo, 0/1]
-      final simpleData = await _ble.requestCharacteristicField(
-          svc, BleGattAttributes.uuidSettingsSimpleControls, 0x81);
-      if (simpleData != null && simpleData.length >= 2) {
-        setState(() => _simpleControlEnabled = simpleData[1] != 0);
+      if (_cfg.delayIn) {
+        await _readTime(svc, BleGattAttributes.uuidSettingsRemotesDelayIn,
+            (v, mx) => setState(() { _delayIn = v; if (mx > 0) _delayInMax = mx; }));
       }
 
-      // Soap dosage (soap/foam only)
-      if (_isSoapType) {
-        final dosageUuid = widget.product.type == SternTypes.foamSoapDispenser
-            ? BleGattAttributes.uuidSettingsFoamSoap
-            : BleGattAttributes.uuidSettingsSoapDosage;
-        final dosageData = await _ble.requestCharacteristicField(
-            svc, dosageUuid, 0x81);
-        if (dosageData != null && dosageData.length >= 2) {
-          setState(() => _soapDosage = dosageData[1].clamp(1, 5));
+      if (_cfg.delayOut) {
+        await _readTime(svc, BleGattAttributes.uuidSettingsRemotesDelayOut,
+            (v, mx) => setState(() { _delayOut = v; if (mx > 0) _delayOutMax = mx; }));
+      }
+
+      if (_cfg.shortFlush) {
+        await _readTime(svc, BleGattAttributes.uuidSettingsRemotesShortWash,
+            (v, mx) => setState(() { _shortFlush = v; if (mx > 0) _shortFlushMax = mx; }));
+      }
+
+      if (_cfg.longFlush) {
+        await _readTime(svc, BleGattAttributes.uuidSettingsRemotesLongFlush,
+            (v, mx) => setState(() { _longFlush = v; if (mx > 0) _longFlushMax = mx; }));
+      }
+
+      if (_cfg.securityTime) {
+        await _readTime(svc, BleGattAttributes.uuidSettingsRemotesSecurityTime,
+            (v, mx) => setState(() { _securityTime = v; if (mx > 0) _securityTimeMax = mx; }));
+      }
+
+      if (_cfg.soapDosage) {
+        final d = await _ble.requestCharacteristicField(
+            svc, BleGattAttributes.uuidSettingsSoapDosage, 0x81);
+        if (d != null && d.length >= 2) {
+          setState(() => _soapDosage = d[1].clamp(1, 4));
+        }
+      }
+
+      if (_cfg.airMotor) {
+        // Response: [echo, soapMotor, airMotor]
+        final d = await _ble.requestCharacteristicField(
+            svc, BleGattAttributes.uuidSettingsFoamSoap, 0x81);
+        if (d != null && d.length >= 3) {
+          setState(() => _airMotor = d[2].toDouble().clamp(0, 9));
         }
       }
     } catch (e) {
@@ -169,27 +202,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  /// Read a time-based setting characteristic.
-  /// Response: [echo(0x81), b1, b2, b3, b4 = currentMs LE32,
-  ///            b5..b8 = maxMs LE32, b9..b12 = minMs LE32, ...]
-  Future<void> _readTime(
-    String svc,
-    String char,
-    void Function(double value, double maxValue) onParsed,
-  ) async {
+  /// Request a time characteristic (write 0x81, read LE32 millis).
+  /// Response: [echo, b1..b4 = currentMs, b5..b8 = maxMs, ...]
+  Future<void> _readTime(String svc, String char,
+      void Function(double value, double maxValue) onParsed) async {
     try {
       final data = await _ble.requestCharacteristicField(svc, char, 0x81);
       if (data == null || data.length < 5) return;
-
-      final currentMs = _le32(data, 1);
-      final currentSec = currentMs / 1000.0;
-
+      final currentSec = _le32(data, 1) / 1000.0;
       double maxSec = 0;
-      if (data.length >= 9) {
-        final maxMs = _le32(data, 5);
-        maxSec = maxMs / 1000.0;
-      }
-
+      if (data.length >= 9) maxSec = _le32(data, 5) / 1000.0;
       onParsed(currentSec, maxSec);
     } catch (e) {
       dev.log('_readTime [$char]: $e');
@@ -205,49 +227,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
       bool ok = true;
       const svc = BleGattAttributes.uuidDataSettingsService;
 
-      // Time-based settings: [0x01, msLo, msMidLo, msMidHi, 0x00]
-      ok &= await _ble.writeCharacteristic(
-          svc, BleGattAttributes.uuidSettingsRemotesDelayIn,
-          _timeBytes(_delayIn));
-
-      ok &= await _ble.writeCharacteristic(
-          svc, BleGattAttributes.uuidSettingsRemotesDelayOut,
-          _timeBytes(_delayOut));
-
-      ok &= await _ble.writeCharacteristic(
-          svc, BleGattAttributes.uuidSettingsRemotesLongFlush,
-          _timeBytes(_longFlush));
-
-      ok &= await _ble.writeCharacteristic(
-          svc, BleGattAttributes.uuidSettingsRemotesShortWash,
-          _timeBytes(_shortWash));
-
-      ok &= await _ble.writeCharacteristic(
-          svc, BleGattAttributes.uuidSettingsRemotesSecurityTime,
-          _timeBytes(_securityTime));
-
-      ok &= await _ble.writeCharacteristic(
-          svc, BleGattAttributes.uuidSettingsRemotesBetweenTime,
-          _timeBytes(_betweenTime));
-
-      // Detection range: [0x01, steps]
-      ok &= await _ble.writeCharacteristic(
-          svc, BleGattAttributes.uuidSettingsDetectionRange,
-          [0x01, _detectionRange.round()]);
-
-      // Simple controls: [0x01, 0/1]
-      ok &= await _ble.writeCharacteristic(
-          svc, BleGattAttributes.uuidSettingsSimpleControls,
-          [0x01, _simpleControlEnabled ? 1 : 0]);
-
-      // Soap dosage: [0x01, dosage]
-      if (_isSoapType) {
-        final dosageUuid =
-            widget.product.type == SternTypes.foamSoapDispenser
-                ? BleGattAttributes.uuidSettingsFoamSoap
-                : BleGattAttributes.uuidSettingsSoapDosage;
+      if (_cfg.detectionRange) {
         ok &= await _ble.writeCharacteristic(
-            svc, dosageUuid, [0x01, _soapDosage]);
+            svc, BleGattAttributes.uuidSettingsDetectionRange,
+            [0x01, _detectionRange.round()]);
+      }
+
+      if (_cfg.delayIn) {
+        ok &= await _ble.writeCharacteristic(
+            svc, BleGattAttributes.uuidSettingsRemotesDelayIn,
+            _timeBytes(_delayIn));
+      }
+
+      if (_cfg.delayOut) {
+        ok &= await _ble.writeCharacteristic(
+            svc, BleGattAttributes.uuidSettingsRemotesDelayOut,
+            _timeBytes(_delayOut));
+      }
+
+      if (_cfg.shortFlush) {
+        ok &= await _ble.writeCharacteristic(
+            svc, BleGattAttributes.uuidSettingsRemotesShortWash,
+            _timeBytes(_shortFlush));
+      }
+
+      if (_cfg.longFlush) {
+        ok &= await _ble.writeCharacteristic(
+            svc, BleGattAttributes.uuidSettingsRemotesLongFlush,
+            _timeBytes(_longFlush));
+      }
+
+      if (_cfg.securityTime) {
+        ok &= await _ble.writeCharacteristic(
+            svc, BleGattAttributes.uuidSettingsRemotesSecurityTime,
+            _timeBytes(_securityTime));
+      }
+
+      if (_cfg.soapDosage) {
+        // [0x01, dosage]
+        ok &= await _ble.writeCharacteristic(
+            svc, BleGattAttributes.uuidSettingsSoapDosage,
+            [0x01, _soapDosage]);
+      }
+
+      if (_cfg.airMotor) {
+        // [0x01, soapMotor=1 (default), airMotor]
+        ok &= await _ble.writeCharacteristic(
+            svc, BleGattAttributes.uuidSettingsFoamSoap,
+            [0x01, 1, _airMotor.round()]);
       }
 
       if (mounted) {
@@ -286,6 +313,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     _showSnack('Preset "$_selectedPreset" loaded');
+  }
+
+  void _resetToDefaults() {
+    setState(() {
+      _selectedPreset = null;
+      _newPresetMode = false;
+      _detectionRange = 5;
+      _delayIn = 1.0;
+      _delayOut = 1.0;
+      _shortFlush = 3.0;
+      _longFlush = 5.0;
+      _securityTime = 10.0;
+      _soapDosage = 1;
+      _airMotor = 5;
+    });
+    _showSnack('Values reset to default');
   }
 
   // ─── Build ─────────────────────────────────────────────────────────────────
@@ -327,91 +370,111 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 8),
                 ],
 
-                _buildSeekSection(
-                  title: 'Detection Range',
-                  value: _detectionRange,
-                  min: 1,
-                  max: _detectionRangeMax,
-                  unit: 'steps',
-                  decimals: 0,
-                  onChanged: (v) => setState(() => _detectionRange = v),
-                ),
-                const SizedBox(height: 12),
+                // Detection Range
+                if (_cfg.detectionRange) ...[
+                  _buildSeekSection(
+                    title: 'Detection Range',
+                    value: _detectionRange,
+                    min: 1,
+                    max: _detectionRangeMax,
+                    unit: 'steps',
+                    decimals: 0,
+                    onChanged: (v) => setState(() => _detectionRange = v),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
-                _buildSeekSection(
-                  title: 'Delay In',
-                  value: _delayIn,
-                  min: 0,
-                  max: _delayInMax,
-                  unit: 's',
-                  decimals: 1,
-                  onChanged: (v) => setState(() => _delayIn = v),
-                ),
-                const SizedBox(height: 12),
+                // Delay In
+                if (_cfg.delayIn) ...[
+                  _buildSeekSection(
+                    title: 'Delay In',
+                    value: _delayIn,
+                    min: 0,
+                    max: _delayInMax,
+                    unit: 's',
+                    decimals: 1,
+                    onChanged: (v) => setState(() => _delayIn = v),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
-                _buildSeekSection(
-                  title: 'Delay Out',
-                  value: _delayOut,
-                  min: 0,
-                  max: _delayOutMax,
-                  unit: 's',
-                  decimals: 1,
-                  onChanged: (v) => setState(() => _delayOut = v),
-                ),
-                const SizedBox(height: 12),
+                // Delay Out
+                if (_cfg.delayOut) ...[
+                  _buildSeekSection(
+                    title: 'Delay Out',
+                    value: _delayOut,
+                    min: 0,
+                    max: _delayOutMax,
+                    unit: 's',
+                    decimals: 1,
+                    onChanged: (v) => setState(() => _delayOut = v),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
-                _buildSeekSection(
-                  title: 'Long Flush',
-                  value: _longFlush,
-                  min: 0,
-                  max: _longFlushMax,
-                  unit: 's',
-                  decimals: 1,
-                  onChanged: (v) => setState(() => _longFlush = v),
-                ),
-                const SizedBox(height: 12),
+                // Short Flush (WC only)
+                if (_cfg.shortFlush) ...[
+                  _buildSeekSection(
+                    title: 'Short Flush',
+                    value: _shortFlush,
+                    min: 0,
+                    max: _shortFlushMax,
+                    unit: 's',
+                    decimals: 1,
+                    onChanged: (v) => setState(() => _shortFlush = v),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
-                _buildSeekSection(
-                  title: 'Short Wash',
-                  value: _shortWash,
-                  min: 0,
-                  max: _shortWashMax,
-                  unit: 's',
-                  decimals: 1,
-                  onChanged: (v) => setState(() => _shortWash = v),
-                ),
-                const SizedBox(height: 12),
+                // Long Flush / Flush / Flash
+                if (_cfg.longFlush) ...[
+                  _buildSeekSection(
+                    title: _cfg.longFlushLabel,
+                    value: _longFlush,
+                    min: 0,
+                    max: _longFlushMax,
+                    unit: 's',
+                    decimals: 1,
+                    onChanged: (v) => setState(() => _longFlush = v),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
-                _buildSeekSection(
-                  title: 'Security Time',
-                  value: _securityTime,
-                  min: 0,
-                  max: _securityTimeMax,
-                  unit: 's',
-                  decimals: 0,
-                  onChanged: (v) => setState(() => _securityTime = v),
-                ),
-                const SizedBox(height: 12),
+                // Security Time / Discharge
+                if (_cfg.securityTime) ...[
+                  _buildSeekSection(
+                    title: _cfg.securityTimeLabel,
+                    value: _securityTime,
+                    min: 0,
+                    max: _securityTimeMax,
+                    unit: 's',
+                    decimals: 0,
+                    onChanged: (v) => setState(() => _securityTime = v),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
-                _buildSeekSection(
-                  title: 'Between Time',
-                  value: _betweenTime,
-                  min: 0,
-                  max: _betweenTimeMax,
-                  unit: 's',
-                  decimals: 0,
-                  onChanged: (v) => setState(() => _betweenTime = v),
-                ),
-                const SizedBox(height: 12),
-
-                if (_isSoapType) ...[
+                // Soap Dosage (Soap Dispenser only)
+                if (_cfg.soapDosage) ...[
                   _buildDosageSection(),
                   const SizedBox(height: 12),
                 ],
 
-                _buildSimpleControlsSection(),
-                const SizedBox(height: 24),
+                // Air Motor (Foam Soap Dispenser only)
+                if (_cfg.airMotor) ...[
+                  _buildSeekSection(
+                    title: 'Motor Speed',
+                    value: _airMotor,
+                    min: 0,
+                    max: 9,
+                    unit: '',
+                    decimals: 0,
+                    onChanged: (v) => setState(() => _airMotor = v),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
+                // Apply button
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -465,20 +528,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _PresetButton(
             label: 'New',
             enabled: true,
-            onTap: () => setState(() {
-              _selectedPreset = null;
-              _newPresetMode = false;
-              _delayIn = 1.0;
-              _delayOut = 1.0;
-              _longFlush = 5.0;
-              _shortWash = 3.0;
-              _securityTime = 10.0;
-              _betweenTime = 5.0;
-              _detectionRange = 5.0;
-              _soapDosage = 3;
-              _simpleControlEnabled = false;
-              _showSnack('Values reset to default');
-            }),
+            onTap: _resetToDefaults,
           ),
         ],
       ),
@@ -521,10 +571,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required ValueChanged<double> onChanged,
   }) {
     final displayMax = max > 0 ? max : 100.0;
-    final clampedValue = value.clamp(min, displayMax);
-    final valueLabel = decimals > 0
-        ? '${clampedValue.toStringAsFixed(decimals)} $unit'
-        : '${clampedValue.round()} $unit';
+    final clamped = value.clamp(min, displayMax);
+    final label = decimals > 0
+        ? '${clamped.toStringAsFixed(decimals)}${unit.isNotEmpty ? ' $unit' : ''}'
+        : '${clamped.round()}${unit.isNotEmpty ? ' $unit' : ''}';
 
     return Card(
       elevation: 1,
@@ -540,25 +590,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Text(title,
                     style: const TextStyle(
                         fontWeight: FontWeight.w600, fontSize: 14)),
-                Text(
-                  valueLabel,
-                  style: const TextStyle(
-                      color: _appTeal,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14),
-                ),
+                Text(label,
+                    style: const TextStyle(
+                        color: _appTeal,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14)),
               ],
             ),
             Slider(
-              value: clampedValue,
+              value: clamped,
               min: min,
               max: displayMax,
-              // Use enough divisions for smooth steps
               divisions: decimals > 0
                   ? ((displayMax - min) * 10).round().clamp(1, 200)
                   : (displayMax - min).round().clamp(1, 200),
               activeColor: _appTeal,
-              label: valueLabel,
+              label: label,
               onChanged: onChanged,
             ),
           ],
@@ -581,15 +628,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: List.generate(5, (i) {
+              children: List.generate(4, (i) {
                 final level = i + 1;
                 final selected = _soapDosage == level;
                 return GestureDetector(
                   onTap: () => setState(() => _soapDosage = level),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 150),
-                    width: 44,
-                    height: 44,
+                    width: 52,
+                    height: 52,
                     decoration: BoxDecoration(
                       color: selected ? _appTeal : Colors.grey[200],
                       shape: BoxShape.circle,
@@ -599,7 +646,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       '$level',
                       style: TextStyle(
                           color: selected ? Colors.white : Colors.black87,
-                          fontWeight: FontWeight.bold),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16),
                     ),
                   ),
                 );
@@ -607,22 +655,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildSimpleControlsSection() {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: SwitchListTile(
-        title: const Text('Simple Controls',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-        subtitle: Text(_simpleControlEnabled ? 'Enabled' : 'Disabled',
-            style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-        value: _simpleControlEnabled,
-        activeColor: _appTeal,
-        onChanged: (v) => setState(() => _simpleControlEnabled = v),
       ),
     );
   }
