@@ -293,6 +293,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _confirmFactoryReset() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset to Factory Settings'),
+        content: const Text(
+            'This will restore all device settings to factory defaults. Are you sure?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _isBusy = true);
+    try {
+      // Android sends [0x04] to the Simple Controls characteristic to trigger
+      // factory reset on the device firmware.
+      final ok = await _ble.writeCharacteristic(
+          BleGattAttributes.uuidDataSettingsService,
+          BleGattAttributes.uuidSettingsSimpleControls,
+          [0x04]);
+      if (mounted) {
+        _showSnack(ok ? 'Factory reset sent' : 'Reset failed');
+      }
+      if (ok) {
+        // Reload settings from device after reset
+        await Future.delayed(const Duration(seconds: 1));
+        await _loadSettings();
+      }
+    } catch (e) {
+      if (mounted) _showSnack('Error: $e');
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
+  }
+
   // ─── Presets ───────────────────────────────────────────────────────────────
 
   void _savePreset() {
@@ -494,6 +539,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 strokeWidth: 2, color: Colors.white))
                         : const Text('Apply',
                             style: TextStyle(fontSize: 16)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Factory reset button
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _isBusy ? null : _confirmFactoryReset,
+                    icon: const Icon(Icons.restore, size: 18),
+                    label: const Text('Reset to Factory Settings'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
                   ),
                 ),
               ],
