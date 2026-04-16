@@ -96,13 +96,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _soapDosage = 1;
   double _airMotor = 5;
 
-  // --- Dynamic slider maxima (updated from device response) ---
+  // --- Slider bounds — updated from device response (bytes 5-8 = max, 9-12 = min).
+  //     Fallback values are used only if the device does not respond.
+  // Detection range min is always 1 (per Android SettingsScreenBleDataParser).
+  static const double _detectionRangeMin = 1;
   double _detectionRangeMax = 18;
-  double _delayInMax = 30;
-  double _delayOutMax = 30;
-  double _shortFlushMax = 30;
-  double _longFlushMax = 60;
-  double _securityTimeMax = 120;
+  double _delayInMin = 0;          double _delayInMax = 30;
+  double _delayOutMin = 0;         double _delayOutMax = 30;
+  double _shortFlushMin = 0;       double _shortFlushMax = 30;
+  double _longFlushMin = 0;        double _longFlushMax = 60;
+  double _securityTimeMin = 0;     double _securityTimeMax = 120;
 
   @override
   void initState() {
@@ -156,27 +159,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (_cfg.delayIn) {
         await _readTime(svc, BleGattAttributes.uuidSettingsRemotesDelayIn,
-            (v, mx) => setState(() { _delayIn = v; if (mx > 0) _delayInMax = mx; }));
+            (v, mx, mn) => setState(() {
+              _delayIn = v;
+              if (mx > 0) _delayInMax = mx;
+              if (mn >= 0) _delayInMin = mn;
+            }));
       }
 
       if (_cfg.delayOut) {
         await _readTime(svc, BleGattAttributes.uuidSettingsRemotesDelayOut,
-            (v, mx) => setState(() { _delayOut = v; if (mx > 0) _delayOutMax = mx; }));
+            (v, mx, mn) => setState(() {
+              _delayOut = v;
+              if (mx > 0) _delayOutMax = mx;
+              if (mn >= 0) _delayOutMin = mn;
+            }));
       }
 
       if (_cfg.shortFlush) {
         await _readTime(svc, BleGattAttributes.uuidSettingsRemotesShortWash,
-            (v, mx) => setState(() { _shortFlush = v; if (mx > 0) _shortFlushMax = mx; }));
+            (v, mx, mn) => setState(() {
+              _shortFlush = v;
+              if (mx > 0) _shortFlushMax = mx;
+              if (mn >= 0) _shortFlushMin = mn;
+            }));
       }
 
       if (_cfg.longFlush) {
         await _readTime(svc, BleGattAttributes.uuidSettingsRemotesLongFlush,
-            (v, mx) => setState(() { _longFlush = v; if (mx > 0) _longFlushMax = mx; }));
+            (v, mx, mn) => setState(() {
+              _longFlush = v;
+              if (mx > 0) _longFlushMax = mx;
+              if (mn >= 0) _longFlushMin = mn;
+            }));
       }
 
       if (_cfg.securityTime) {
         await _readTime(svc, BleGattAttributes.uuidSettingsRemotesSecurityTime,
-            (v, mx) => setState(() { _securityTime = v; if (mx > 0) _securityTimeMax = mx; }));
+            (v, mx, mn) => setState(() {
+              _securityTime = v;
+              if (mx > 0) _securityTimeMax = mx;
+              if (mn >= 0) _securityTimeMin = mn;
+            }));
       }
 
       if (_cfg.soapDosage) {
@@ -203,16 +226,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// Request a time characteristic (write 0x81, read LE32 millis).
-  /// Response: [echo, b1..b4 = currentMs, b5..b8 = maxMs, ...]
+  /// Response: [echo, b1..b4=currentMs, b5..b8=maxMs, b9..b12=minMs, ...]
+  /// All three come from the device — no hardcoded values.
   Future<void> _readTime(String svc, String char,
-      void Function(double value, double maxValue) onParsed) async {
+      void Function(double value, double maxValue, double minValue) onParsed) async {
     try {
       final data = await _ble.requestCharacteristicField(svc, char, 0x81);
       if (data == null || data.length < 5) return;
       final currentSec = _le32(data, 1) / 1000.0;
-      double maxSec = 0;
-      if (data.length >= 9) maxSec = _le32(data, 5) / 1000.0;
-      onParsed(currentSec, maxSec);
+      final maxSec = data.length >= 9  ? _le32(data, 5) / 1000.0 : 0.0;
+      final minSec = data.length >= 13 ? _le32(data, 9) / 1000.0 : 0.0;
+      onParsed(currentSec, maxSec, minSec);
     } catch (e) {
       dev.log('_readTime [$char]: $e');
     }
@@ -420,7 +444,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildSeekSection(
                     title: 'Detection Range',
                     value: _detectionRange,
-                    min: 1,
+                    min: _detectionRangeMin,
                     max: _detectionRangeMax,
                     unit: 'steps',
                     decimals: 0,
@@ -434,7 +458,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildSeekSection(
                     title: 'Delay In',
                     value: _delayIn,
-                    min: 0,
+                    min: _delayInMin,
                     max: _delayInMax,
                     unit: 's',
                     decimals: 1,
@@ -448,7 +472,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildSeekSection(
                     title: 'Delay Out',
                     value: _delayOut,
-                    min: 0,
+                    min: _delayOutMin,
                     max: _delayOutMax,
                     unit: 's',
                     decimals: 1,
@@ -462,7 +486,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildSeekSection(
                     title: 'Short Flush',
                     value: _shortFlush,
-                    min: 0,
+                    min: _shortFlushMin,
                     max: _shortFlushMax,
                     unit: 's',
                     decimals: 1,
@@ -476,7 +500,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildSeekSection(
                     title: _cfg.longFlushLabel,
                     value: _longFlush,
-                    min: 0,
+                    min: _longFlushMin,
                     max: _longFlushMax,
                     unit: 's',
                     decimals: 1,
@@ -490,7 +514,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildSeekSection(
                     title: _cfg.securityTimeLabel,
                     value: _securityTime,
-                    min: 0,
+                    min: _securityTimeMin,
                     max: _securityTimeMax,
                     unit: 's',
                     decimals: 0,
